@@ -8,7 +8,8 @@ public static class ControllerInputPipeline
     public static IObservable<ControllerInputEvent> DetectInputEvents(
         this IObservable<ControllerSnapshot> source,
         double axisChangeThreshold,
-        double axisResetThreshold)
+        double axisResetThreshold,
+        int axisBaselineSampleCount = 1)
     {
         ArgumentNullException.ThrowIfNull(source);
 
@@ -22,10 +23,20 @@ public static class ControllerInputPipeline
             throw new ArgumentOutOfRangeException(nameof(axisResetThreshold));
         }
 
+        if (axisBaselineSampleCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(axisBaselineSampleCount));
+        }
+
         return source
             .Scan(
                 DetectionStep.Empty,
-                (previous, snapshot) => Detect(previous.State, snapshot, axisChangeThreshold, axisResetThreshold))
+                (previous, snapshot) => Detect(
+                    previous.State,
+                    snapshot,
+                    axisChangeThreshold,
+                    axisResetThreshold,
+                    axisBaselineSampleCount))
             .SelectMany(step => step.Events);
     }
 
@@ -33,11 +44,14 @@ public static class ControllerInputPipeline
         DetectionState? previous,
         ControllerSnapshot snapshot,
         double changeThreshold,
-        double resetThreshold)
+        double resetThreshold,
+        int axisBaselineSampleCount)
     {
         if (previous is null)
         {
-            return new DetectionStep(DetectionState.Create(snapshot), []);
+            return new DetectionStep(
+                DetectionState.Create(snapshot, axisBaselineSampleCount),
+                []);
         }
 
         List<ControllerInputEvent> events = [];
@@ -70,12 +84,21 @@ public static class ControllerInputPipeline
         }
 
         Dictionary<int, AxisDetectionState> nextAxes = new(previous.Axes.Count);
+        bool isEstablishingAxisBaseline =
+            previous.RemainingAxisBaselineSamples > 0;
         foreach (AxisSample axis in snapshot.Axes)
         {
             if (!previous.Axes.TryGetValue(axis.Number, out AxisDetectionState? axisState)
                 || axisState is null)
             {
                 nextAxes[axis.Number] = new AxisDetectionState(axis.Value, true, 0);
+                continue;
+            }
+
+            if (isEstablishingAxisBaseline)
+            {
+                nextAxes[axis.Number] =
+                    new AxisDetectionState(axis.Value, true, 0);
                 continue;
             }
 
@@ -121,7 +144,8 @@ public static class ControllerInputPipeline
         DetectionState nextState = new(
             snapshot.Buttons.ToArray(),
             snapshot.Povs.ToArray(),
-            nextAxes);
+            nextAxes,
+            Math.Max(previous.RemainingAxisBaselineSamples - 1, 0));
 
         return new DetectionStep(nextState, events);
     }
@@ -136,15 +160,19 @@ public static class ControllerInputPipeline
     private sealed record DetectionState(
         bool[] Buttons,
         int[] Povs,
-        Dictionary<int, AxisDetectionState> Axes)
+        Dictionary<int, AxisDetectionState> Axes,
+        int RemainingAxisBaselineSamples)
     {
-        public static DetectionState Create(ControllerSnapshot snapshot) =>
+        public static DetectionState Create(
+            ControllerSnapshot snapshot,
+            int axisBaselineSampleCount) =>
             new(
                 snapshot.Buttons.ToArray(),
                 snapshot.Povs.ToArray(),
                 snapshot.Axes.ToDictionary(
                     axis => axis.Number,
-                    axis => new AxisDetectionState(axis.Value, true, 0)));
+                    axis => new AxisDetectionState(axis.Value, true, 0)),
+                axisBaselineSampleCount - 1);
     }
 
     private sealed record AxisDetectionState(double Baseline, bool Armed, int ActiveSide);

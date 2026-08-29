@@ -69,6 +69,26 @@ public sealed class ControllerInputPipelineTests
     }
 
     [Fact]
+    public void Axis_UsesSettledStartupValueAsBaseline()
+    {
+        ControllerInputEvent[] events = new[]
+            {
+                Snapshot(axis: 0),
+                Snapshot(axis: 1),
+                Snapshot(axis: 1),
+                Snapshot(axis: 0.75)
+            }
+            .ToObservable()
+            .DetectInputEvents(0.25, 0.20, axisBaselineSampleCount: 3)
+            .ToArray()
+            .Wait();
+
+        AxisMovedEvent axis = Assert.IsType<AxisMovedEvent>(Assert.Single(events));
+        Assert.Equal(1.00, axis.Baseline, 10);
+        Assert.Equal(0.75, axis.Value, 10);
+    }
+
+    [Fact]
     public void Button_LogsOnlyReleasedToPressedTransition()
     {
         ControllerInputEvent[] events = new[]

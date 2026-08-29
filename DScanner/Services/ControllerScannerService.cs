@@ -107,7 +107,9 @@ public sealed class ControllerScannerService(
         return base.StopAsync(cancellationToken);
     }
 
-    private void ReconcileDevices(IReadOnlyList<DirectInputDeviceDescriptor> discovered)
+    private void ReconcileDevices(
+        IReadOnlyList<DirectInputDeviceDescriptor> discovered,
+        bool fromCache = false)
     {
         logger.LogInformation(
             "DirectInput discovery found {DeviceCount} game controller(s).",
@@ -117,17 +119,6 @@ public sealed class ControllerScannerService(
         {
             logger.LogInformation(
                 "No USB DirectInput game controllers are currently being watched.");
-        }
-
-        foreach (DirectInputDeviceDescriptor descriptor in discovered)
-        {
-            logger.LogInformation(
-                "Enumerated DirectInput device {DeviceName} (VID_{VendorId}, PID_{ProductId}).",
-                descriptor.Name,
-                FormatHex(descriptor.VendorId),
-                FormatHex(descriptor.ProductId));
-            consoleUi.AddEvent(
-                $"Found {descriptor.Name} (VID_{FormatHex(descriptor.VendorId)}, PID_{FormatHex(descriptor.ProductId)})");
         }
 
         HashSet<Guid> discoveredIds = discovered.Select(device => device.InstanceGuid).ToHashSet();
@@ -155,6 +146,16 @@ public sealed class ControllerScannerService(
                 }
             }
 
+            string cacheMarker = fromCache ? "* " : string.Empty;
+            logger.LogInformation(
+                "{CacheMarker}Found DirectInput device {DeviceName} (VID_{VendorId}, PID_{ProductId}).",
+                cacheMarker,
+                descriptor.Name,
+                FormatHex(descriptor.VendorId),
+                FormatHex(descriptor.ProductId));
+            consoleUi.AddEvent(
+                $"{cacheMarker}Found {DirectInputDeviceLabel.Format(descriptor.Name, descriptor.InstanceGuid)} (VID_{FormatHex(descriptor.VendorId)}, PID_{FormatHex(descriptor.ProductId)})",
+                ConsoleColor.Green);
             StartDevice(descriptor);
         }
     }
@@ -181,7 +182,8 @@ public sealed class ControllerScannerService(
                 .Select(_ => capturedSession.ReadSnapshot())
                 .DetectInputEvents(
                     _options.AxisChangeThreshold,
-                    _options.AxisResetThreshold)
+                    _options.AxisResetThreshold,
+                    _options.PollFrequencyHz)
                 .Subscribe(
                     LogInputEvent,
                     exception => HandleDeviceFailure(descriptor.InstanceGuid, descriptor.Name, exception));
@@ -204,7 +206,7 @@ public sealed class ControllerScannerService(
                 descriptor.Type,
                 descriptor.InstanceGuid);
             consoleUi.AddEvent(
-                $"Watching {descriptor.Name} (VID_{FormatHex(descriptor.VendorId)}, PID_{FormatHex(descriptor.ProductId)})");
+                $"Watching {DirectInputDeviceLabel.Format(descriptor.Name, descriptor.InstanceGuid)} (VID_{FormatHex(descriptor.VendorId)}, PID_{FormatHex(descriptor.ProductId)})");
         }
         catch (SharpGenException exception)
         {
@@ -291,7 +293,7 @@ public sealed class ControllerScannerService(
             cachedDevices.Count);
         consoleUi.SetStatus(
             $"Restoring {cachedDevices.Count} cached DirectInput controller(s)");
-        ReconcileDevices(cachedDevices);
+        ReconcileDevices(cachedDevices, fromCache: true);
         consoleUi.SetStatus(
             $"Watching cached controllers at {_options.PollFrequencyHz} Hz; refreshing in background");
     }
@@ -339,12 +341,15 @@ public sealed class ControllerScannerService(
         }
 
         string deviceName = device.Session.DeviceName;
+        string deviceLabel = DirectInputDeviceLabel.Format(
+            deviceName,
+            device.Session.DeviceId);
         device.Dispose();
         logger.LogInformation(
             "Stopped monitoring DirectInput device {DeviceName}: {Reason}.",
             deviceName,
             reason);
-        consoleUi.AddEvent($"Stopped watching {deviceName}: {reason}");
+        consoleUi.AddEvent($"Stopped watching {deviceLabel}: {reason}");
     }
 
     private void LogInputEvent(ControllerInputEvent inputEvent)
@@ -352,8 +357,10 @@ public sealed class ControllerScannerService(
         switch (inputEvent)
         {
             case ButtonPressedEvent button:
-                consoleUi.AddEvent(
-                    $"{button.DeviceName} button {button.ButtonNumber} pressed");
+                consoleUi.AddHighlightedEvent(
+                    button.DeviceName,
+                    $" {DirectInputDeviceLabel.FormatIdentifier(button.DeviceId)} button {button.ButtonNumber} pressed",
+                    ConsoleColor.Red);
                 logger.LogInformation(
                     "{DeviceName} button {ButtonNumber} pressed",
                     button.DeviceName,
@@ -361,8 +368,10 @@ public sealed class ControllerScannerService(
                 break;
 
             case AxisMovedEvent axis:
-                consoleUi.AddEvent(
-                    $"{axis.DeviceName} axis {axis.AxisNumber} ({axis.AxisName}) moved to {axis.Value:F3}");
+                consoleUi.AddHighlightedEvent(
+                    axis.DeviceName,
+                    $" {DirectInputDeviceLabel.FormatIdentifier(axis.DeviceId)} axis {axis.AxisNumber} ({axis.AxisName}) moved to {axis.Value:F3}",
+                    ConsoleColor.Red);
                 logger.LogInformation(
                     "{DeviceName} axis {AxisNumber} ({AxisName}) moved to {NormalizedValue:F3}; baseline {BaselineValue:F3}; change {NormalizedDifference:+0.000;-0.000;0.000}",
                     axis.DeviceName,
@@ -375,7 +384,7 @@ public sealed class ControllerScannerService(
 
             case PovChangedEvent pov:
                 consoleUi.AddEvent(
-                    $"{pov.DeviceName} POV {pov.PovNumber} moved to {pov.Degrees:0.##} degrees");
+                    $"{DirectInputDeviceLabel.Format(pov.DeviceName, pov.DeviceId)} POV {pov.PovNumber} moved to {pov.Degrees:0.##} degrees");
                 logger.LogInformation(
                     "{DeviceName} POV {PovNumber} moved to {Degrees:0.##} degrees",
                     pov.DeviceName,

@@ -18,7 +18,7 @@ public sealed class ConsoleUiService(
     private const string Footer = "Press Ctrl+Q to quit";
 
     private readonly object _gate = new();
-    private readonly Queue<string> _events = [];
+    private readonly Queue<ConsoleEvent> _events = [];
     private readonly ScannerOptions _options = options.Value;
     private string _status = "Starting USB device watchers...";
     private string _loader = "Enumeration: waiting";
@@ -84,13 +84,44 @@ public sealed class ConsoleUiService(
         }
     }
 
-    public void AddEvent(string message)
+    public void AddEvent(
+        string message,
+        ConsoleColor color = ConsoleColor.White)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
         lock (_gate)
         {
-            _events.Enqueue($"{DateTime.Now:HH:mm:ss.fff}  {message}");
+            _events.Enqueue(
+                new ConsoleEvent(
+                    [new ConsoleSegment(
+                        $"{DateTime.Now:HH:mm:ss.fff}  {message}",
+                        color)]));
+            TrimEvents();
+            RenderEvents();
+            RenderFooter();
+        }
+    }
+
+    public void AddHighlightedEvent(
+        string highlightedText,
+        string remainingText,
+        ConsoleColor highlightColor)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(highlightedText);
+        ArgumentNullException.ThrowIfNull(remainingText);
+
+        lock (_gate)
+        {
+            _events.Enqueue(
+                new ConsoleEvent(
+                    [
+                        new ConsoleSegment(
+                            $"{DateTime.Now:HH:mm:ss.fff}  ",
+                            ConsoleColor.White),
+                        new ConsoleSegment(highlightedText, highlightColor),
+                        new ConsoleSegment(remainingText, ConsoleColor.White)
+                    ]));
             TrimEvents();
             RenderEvents();
             RenderFooter();
@@ -149,13 +180,58 @@ public sealed class ConsoleUiService(
         int footerRow = height - 1;
         int eventRowCount = Math.Max(footerRow - EventsStartRow, 0);
         TrimEvents(eventRowCount);
-        string[] events = _events.ToArray();
+        ConsoleEvent[] events = _events.ToArray();
 
         for (int offset = 0; offset < eventRowCount; offset++)
         {
-            string text = offset < events.Length ? events[offset] : string.Empty;
-            RenderLine(EventsStartRow + offset, text, ConsoleColor.White);
+            if (offset < events.Length)
+            {
+                RenderEventLine(EventsStartRow + offset, events[offset]);
+            }
+            else
+            {
+                RenderLine(
+                    EventsStartRow + offset,
+                    string.Empty,
+                    ConsoleColor.White);
+            }
         }
+    }
+
+    private void RenderEventLine(int row, ConsoleEvent consoleEvent)
+    {
+        if (!TryGetDimensions(out int width, out int height)
+            || row < 0
+            || row >= height)
+        {
+            return;
+        }
+
+        TryRender(() =>
+        {
+            int remainingWidth = Math.Max(width - 1, 1);
+            Console.SetCursorPosition(0, row);
+            Console.BackgroundColor = ConsoleColor.Black;
+
+            foreach (ConsoleSegment segment in consoleEvent.Segments)
+            {
+                if (remainingWidth == 0)
+                {
+                    break;
+                }
+
+                string text = segment.Text.Length > remainingWidth
+                    ? segment.Text[..remainingWidth]
+                    : segment.Text;
+                Console.ForegroundColor = segment.Color;
+                Console.Write(text);
+                remainingWidth -= text.Length;
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write(new string(' ', remainingWidth));
+            Console.ResetColor();
+        });
     }
 
     private void RenderFooter()
@@ -275,4 +351,8 @@ public sealed class ConsoleUiService(
         _renderFailureLogged = true;
         logger.LogWarning(exception, "The interactive console UI could not be rendered.");
     }
+
+    private sealed record ConsoleEvent(IReadOnlyList<ConsoleSegment> Segments);
+
+    private sealed record ConsoleSegment(string Text, ConsoleColor Color);
 }

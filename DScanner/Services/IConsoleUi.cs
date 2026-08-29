@@ -10,5 +10,10 @@ public interface IConsoleUi
 
     void EndEnumeration(TimeSpan elapsed);
 
-    void AddEvent(string message);
+    void AddEvent(string message, ConsoleColor color = ConsoleColor.White);
+
+    void AddHighlightedEvent(
+        string highlightedText,
+        string remainingText,
+        ConsoleColor highlightColor);
 }
