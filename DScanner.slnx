@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DScanner.Tests/DScanner.Tests.csproj" />
+  <Project Path="DScanner/DScanner.csproj" />
+</Solution>
