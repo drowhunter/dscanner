@@ -2,6 +2,8 @@
 
 A Windows `.NET 10` console application that monitors DirectInput game controllers at 15 Hz. It uses dependency injection, Reactive Extensions, a dedicated terminal UI, and `ILogger` file logging to identify button presses, significant axis movement, and POV hat changes.
 
+The solution also contains the reusable `DirectInputWatcher` class library. `DScanner` references that library and contains only console hosting, command-line, logging-provider, and UI concerns.
+
 The console is a dedicated terminal UI:
 
 - Line 1 displays the application title.
@@ -52,3 +54,65 @@ USB device changes are detected through Rx streams around Windows Management Ins
 Each run overwrites `C:\ProgramData\DScanner\logs\dscanner.log`, so the file contains only the current run. The same messages are also written to the console when the application is run interactively.
 
 While DirectInput enumerates controllers, the console displays `Enumerating DirectInput devices` and adds one period per second until discovery completes.
+
+## DirectInputWatcher library
+
+`DirectInputWatcher` exposes a manually controlled injectable service with separate lifecycle and input observables. It does not depend on `Microsoft.Extensions.Hosting` and does not start automatically.
+
+```csharp
+using DirectInputWatcher;
+
+services
+    .AddOptions<DirectInputWatcherOptions>()
+    .Bind(configuration.GetSection("DirectInputWatcher"));
+
+services.AddDirectInputWatcher(options =>
+{
+    options.DeviceCachePath = cachePath;
+    options.PollFrequency = 15;
+    options.AxisChangeThreshold = 0.25;
+    options.AxisResetThreshold = 0.20;
+    options.AxisBaselineCalibrationDuration = TimeSpan.FromSeconds(1);
+    options.Whitelist.Add(new VidPid(0x346E, 0x0003));
+    options.Blacklist.Add(new VidPid(0x045E, 0x02FF));
+});
+
+IDirectInputWatcher watcher =
+    serviceProvider.GetRequiredService<IDirectInputWatcher>();
+
+using IDisposable lifecycle = watcher.Lifecycle.Subscribe(HandleLifecycle);
+using IDisposable inputs = watcher.Inputs.Subscribe(HandleInput);
+
+await watcher.StartAsync(cancellationToken);
+// Application runs...
+await watcher.StopAsync(cancellationToken);
+```
+
+It can also use only defaults or previously configured options:
+
+```csharp
+services
+    .AddOptions<DirectInputWatcherOptions>()
+    .Bind(configuration.GetSection("DirectInputWatcher"));
+services.AddDirectInputWatcher();
+```
+
+```json
+{
+  "DirectInputWatcher": {
+    "PollFrequency": 15,
+    "AxisChangeThreshold": 0.25,
+    "AxisResetThreshold": 0.20,
+    "AxisBaselineCalibrationDuration": "00:00:01",
+    "DeviceCachePath": "C:\\ProgramData\\MyApp\\devices.json",
+    "Whitelist": [ "346E:0003" ],
+    "Blacklist": []
+  }
+}
+```
+
+`AddDirectInputWatcher` uses the standard options pipeline. A new options object starts with sensible defaults, previously registered configuration is applied, and the optional setup action runs last so it can override any value directly. Caching is disabled when `DeviceCachePath` is omitted. Blacklist entries always win; when the whitelist is non-empty, only listed devices are monitored.
+
+Every `Lifecycle` subscriber immediately receives one `CurrentDevicesSnapshot` containing only controllers connected at that time. It then receives live `DeviceConnected`, `DeviceDisconnected`, `UsbDeviceChanged`, `ScanStarted`, `ScanProgress`, `ScanCompleted`, and recoverable `WatcherError` events. Historical disconnections and progress events are not replayed.
+
+USB devices connected later are detected through WMI and automatically trigger DirectInput reconciliation. VID/PID filters reduce acquisition and polling work and accelerate cached startup, but DirectInput does not support native VID/PID-filtered enumeration, so an uncached discovery still requires the full native enumeration call.

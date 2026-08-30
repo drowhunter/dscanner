@@ -1,3 +1,4 @@
+using DirectInputWatcher;
 using DScanner.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,7 @@ using Microsoft.Extensions.Options;
 namespace DScanner.Services;
 
 public sealed class ConsoleUiService(
-    IOptions<ScannerOptions> options,
+    IOptions<DirectInputWatcherOptions> options,
     ILogger<ConsoleUiService> logger)
     : BackgroundService, IConsoleUi
 {
@@ -19,7 +20,7 @@ public sealed class ConsoleUiService(
 
     private readonly object _gate = new();
     private readonly Queue<ConsoleEvent> _events = [];
-    private readonly ScannerOptions _options = options.Value;
+    private readonly DirectInputWatcherOptions _options = options.Value;
     private string _status = "Starting USB device watchers...";
     private string _loader = "Enumeration: waiting";
     private int _progressDots;
@@ -149,7 +150,7 @@ public sealed class ConsoleUiService(
                     center: true);
                 RenderLine(
                     StatusRow,
-                    $"USB DirectInput devices | {_options.PollFrequencyHz} Hz | Fast enumeration",
+                    $"USB DirectInput devices | {_options.PollFrequency} Hz | Fast enumeration",
                     ConsoleColor.Gray);
                 RenderLine(LoaderRow, _loader, ConsoleColor.Yellow);
                 RenderLine(EventsHeaderRow, "Input and USB events", ConsoleColor.DarkCyan);

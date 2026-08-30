@@ -1,3 +1,5 @@
+using DirectInputWatcher;
+
 namespace DScanner.Configuration;
 
 public sealed record ScannerCommandLineOverrides(
@@ -5,13 +7,13 @@ public sealed record ScannerCommandLineOverrides(
     double? AxisChangeThreshold,
     double? AxisResetThreshold)
 {
-    public void ApplyTo(ScannerOptions options)
+    public void ApplyTo(DirectInputWatcherOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         if (PollFrequencyHz.HasValue)
         {
-            options.PollFrequencyHz = PollFrequencyHz.Value;
+            options.PollFrequency = PollFrequencyHz.Value;
         }
 
         if (AxisChangeThreshold.HasValue)
