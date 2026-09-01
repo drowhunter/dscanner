@@ -100,6 +100,26 @@ public sealed class DirectInputWatcherRegistrationTests
     }
 
     [Fact]
+    public void OptionsAndDirectInjectionShareOneConfiguredInstance()
+    {
+        ServiceCollection services = new();
+        services.AddDirectInputWatcher(options => options.PollFrequency = 22);
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        // DirectInputWatcherService takes IOptions<T>; the cache and filter take the class
+        // directly. Both must see the configured values, not a default-constructed object.
+        DirectInputWatcherOptions injected =
+            provider.GetRequiredService<DirectInputWatcherOptions>();
+        DirectInputWatcherOptions fromOptions = provider
+            .GetRequiredService<IOptions<DirectInputWatcherOptions>>()
+            .Value;
+
+        Assert.Same(fromOptions, injected);
+        Assert.Equal(22, injected.PollFrequency);
+    }
+
+    [Fact]
     public void InvalidSetupConfigurationFailsValidation()
     {
         ServiceCollection services = new();

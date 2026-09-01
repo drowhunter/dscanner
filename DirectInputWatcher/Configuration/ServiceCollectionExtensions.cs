@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace DirectInputWatcher;
 
@@ -11,22 +12,24 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        var options = new DirectInputWatcherOptions();
-        setup?.Invoke(options);
+        OptionsBuilder<DirectInputWatcherOptions> optionsBuilder =
+            services.AddOptions<DirectInputWatcherOptions>();
 
-        if (string.IsNullOrWhiteSpace(options.DeviceCachePath))
+        if (setup is not null)
         {
-            options.DeviceCachePath = Path.Combine(AppContext.BaseDirectory, "devices.json");
+            // Post-configuration runs last, so the setup action overrides any binding or
+            // configuration the consumer registered before calling this method.
+            optionsBuilder.PostConfigure(setup);
         }
 
-        if (!options.Validate())
-        {
-            throw new ArgumentException("Invalid DirectInputWatcherOptions configuration.");
-        }
+        optionsBuilder.Validate(
+            options => options.Validate(),
+            "Invalid DirectInputWatcherOptions configuration.");
 
+        // Services that take the options directly resolve the same validated instance.
+        services.TryAddSingleton(provider =>
+            provider.GetRequiredService<IOptions<DirectInputWatcherOptions>>().Value);
 
-        //services.AddLogging();
-        services.AddSingleton(options);
         services.TryAddSingleton<DirectInputContext>();
         services.TryAddSingleton<CooperativeWindowHandle>();
         services.TryAddSingleton<DirectInputDeviceCache>();
@@ -40,6 +43,4 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
-
-    
 }

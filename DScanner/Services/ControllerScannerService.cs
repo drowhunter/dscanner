@@ -115,7 +115,7 @@ public sealed class ControllerScannerService(
                 consoleUi.AddHighlightedEvent(
                     button.DeviceName,
                     $" {DirectInputDeviceLabel.FormatIdentifier(button.DeviceId)} button {button.ButtonNumber} pressed",
-                    ConsoleColor.Red);
+                    consoleUi.GetDeviceColor(button.DeviceId));
                 logger.LogInformation(
                     "{DeviceName} button {ButtonNumber} pressed",
                     button.DeviceName,
@@ -126,7 +126,7 @@ public sealed class ControllerScannerService(
                 consoleUi.AddHighlightedEvent(
                     axis.DeviceName,
                     $" {DirectInputDeviceLabel.FormatIdentifier(axis.DeviceId)} axis {axis.AxisNumber} ({axis.AxisName}) moved to {axis.Value:F3}",
-                    ConsoleColor.Red);
+                    consoleUi.GetDeviceColor(axis.DeviceId));
                 logger.LogInformation(
                     "{DeviceName} axis {AxisNumber} ({AxisName}) moved to {NormalizedValue:F3}; baseline {BaselineValue:F3}; change {NormalizedDifference:+0.000;-0.000;0.000}",
                     axis.DeviceName,

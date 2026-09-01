@@ -1,5 +1,5 @@
+using System.Text;
 using DirectInputWatcher;
-using DScanner.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,6 +8,7 @@ namespace DScanner.Services;
 
 public sealed class ConsoleUiService(
     IOptions<DirectInputWatcherOptions> options,
+    IConsoleKeyDispatcher keyDispatcher,
     ILogger<ConsoleUiService> logger)
     : BackgroundService, IConsoleUi
 {
@@ -27,6 +28,8 @@ public sealed class ConsoleUiService(
     private int _lastWidth;
     private int _lastHeight;
     private bool _renderFailureLogged;
+    private string? _promptText;
+    private StringBuilder? _promptInput;
 
     private bool IsInteractive => !Console.IsOutputRedirected;
 
@@ -129,6 +132,169 @@ public sealed class ConsoleUiService(
         }
     }
 
+    public ConsoleColor GetDeviceColor(Guid deviceId)
+    {
+        ConsoleColor[] brightColors =
+        [
+            ConsoleColor.Cyan,
+            ConsoleColor.Green,
+            ConsoleColor.Yellow,
+            ConsoleColor.Magenta,
+            ConsoleColor.Red,
+            ConsoleColor.Blue,
+            ConsoleColor.White,
+            ConsoleColor.DarkYellow
+        ];
+
+        int colorIndex = Math.Abs(deviceId.GetHashCode()) % brightColors.Length;
+        return brightColors[colorIndex];
+    }
+
+    public Task<string?> ReadLabelAsync(string prompt, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+
+        if (!keyDispatcher.IsAvailable)
+        {
+            return Task.FromResult<string?>(null);
+        }
+
+        return ReadLabelCoreAsync(prompt, cancellationToken);
+    }
+
+    public void SetPrompt(string prompt)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+
+        lock (_gate)
+        {
+            bool wasHidden = _promptText is null;
+            _promptText = prompt;
+            _promptInput = null;
+
+            if (wasHidden)
+            {
+                // The prompt row takes a line away from the event log.
+                TrimEvents();
+                RenderEvents();
+            }
+
+            RenderPrompt();
+        }
+    }
+
+    public void ClearPrompt()
+    {
+        lock (_gate)
+        {
+            if (_promptText is null)
+            {
+                return;
+            }
+
+            _promptText = null;
+            _promptInput = null;
+            RenderEvents();
+            RenderFooter();
+        }
+    }
+
+    private async Task<string?> ReadLabelCoreAsync(
+        string prompt,
+        CancellationToken cancellationToken)
+    {
+        TaskCompletionSource<string?> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        StringBuilder buffer = new();
+
+        lock (_gate)
+        {
+            bool wasHidden = _promptText is null;
+            _promptText = prompt;
+            _promptInput = buffer;
+
+            if (wasHidden)
+            {
+                TrimEvents();
+                RenderEvents();
+            }
+
+            RenderPrompt();
+        }
+
+        using IDisposable capture = keyDispatcher.Capture(key =>
+        {
+            lock (_gate)
+            {
+                switch (key.Key)
+                {
+                    case ConsoleKey.Enter:
+                        completion.TrySetResult(buffer.ToString().Trim());
+                        return true;
+
+                    case ConsoleKey.Escape:
+                        completion.TrySetResult(null);
+                        return true;
+
+                    case ConsoleKey.Backspace:
+                        if (buffer.Length > 0)
+                        {
+                            buffer.Length--;
+                            RenderPrompt();
+                        }
+
+                        return true;
+                }
+
+                if (!char.IsControl(key.KeyChar) && key.KeyChar != '\0')
+                {
+                    buffer.Append(key.KeyChar);
+                    RenderPrompt();
+                    return true;
+                }
+
+                return false;
+            }
+        });
+
+        await using CancellationTokenRegistration registration =
+            cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+
+        try
+        {
+            return await completion.Task;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _promptInput = null;
+                RenderPrompt();
+            }
+        }
+    }
+
+    private void RenderPrompt()
+    {
+        if (_promptText is null
+            || !TryGetDimensions(out _, out int height))
+        {
+            return;
+        }
+
+        string text = _promptInput is null
+            ? _promptText
+            : $"{_promptText}{_promptInput}_";
+
+        RenderLine(height - 2, text, ConsoleColor.Cyan);
+    }
+
+    private int GetEventRowCount(int height)
+    {
+        int reservedRows = _promptText is null ? 1 : 2;
+        return Math.Max(height - reservedRows - EventsStartRow, 0);
+    }
+
     private void RenderLayout()
     {
         if (!TryGetDimensions(out int width, out int height))
@@ -155,6 +321,7 @@ public sealed class ConsoleUiService(
                 RenderLine(LoaderRow, _loader, ConsoleColor.Yellow);
                 RenderLine(EventsHeaderRow, "Input and USB events", ConsoleColor.DarkCyan);
                 RenderEvents();
+                RenderPrompt();
                 RenderFooter();
             });
         }
@@ -178,8 +345,7 @@ public sealed class ConsoleUiService(
             return;
         }
 
-        int footerRow = height - 1;
-        int eventRowCount = Math.Max(footerRow - EventsStartRow, 0);
+        int eventRowCount = GetEventRowCount(height);
         TrimEvents(eventRowCount);
         ConsoleEvent[] events = _events.ToArray();
 
@@ -288,7 +454,7 @@ public sealed class ConsoleUiService(
     {
         if (TryGetDimensions(out _, out int height))
         {
-            TrimEvents(Math.Max((height - 1) - EventsStartRow, 0));
+            TrimEvents(GetEventRowCount(height));
         }
     }
 

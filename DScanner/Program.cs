@@ -1,6 +1,7 @@
 using DirectInputWatcher;
 using DirectInputWatcher.Configuration;
 using DScanner.Configuration;
+using DScanner.Mapping;
 using DScanner.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +12,14 @@ return await ScannerCommandLine.InvokeAsync(args, RunScannerAsync);
 
 static async Task RunScannerAsync(ScannerCommandLineOverrides commandLine, CancellationToken cancellationToken)
 {
+    if (commandLine.Map && Console.IsInputRedirected)
+    {
+        await Console.Error.WriteLineAsync(
+            "--map needs an interactive console; console input is redirected.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
     var builder = Host.CreateApplicationBuilder();
     ConfigureLogging(builder);
 
@@ -32,11 +41,20 @@ static async Task RunScannerAsync(ScannerCommandLineOverrides commandLine, Cance
 #endif
 
     builder.Services.AddSingleton<IConsoleKeySource, ConsoleKeySource>();
+    builder.Services.AddSingleton<ConsoleKeyPump>();
+    builder.Services.AddSingleton<IConsoleKeyDispatcher>(services => services.GetRequiredService<ConsoleKeyPump>());
+    builder.Services.AddHostedService(services => services.GetRequiredService<ConsoleKeyPump>());
     builder.Services.AddSingleton<ConsoleUiService>();
     builder.Services.AddSingleton<IConsoleUi>(services => services.GetRequiredService<ConsoleUiService>());
     builder.Services.AddHostedService(services => services.GetRequiredService<ConsoleUiService>());
-    builder.Services.AddHostedService<ConsoleQuitService>();
     builder.Services.AddHostedService<ControllerScannerService>();
+
+    if (commandLine.Map)
+    {
+        builder.Services.Configure<DeviceMappingSettings>(commandLine.ApplyTo);
+        builder.Services.AddSingleton<IDeviceMappingStore, DeviceMappingStore>();
+        builder.Services.AddHostedService<DeviceMappingService>();
+    }
 
     await builder.Build().RunAsync(cancellationToken);
 }

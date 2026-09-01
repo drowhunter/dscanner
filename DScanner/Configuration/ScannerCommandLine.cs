@@ -27,11 +27,31 @@ public static class ScannerCommandLine
             HelpName = "VALUE"
         };
 
+        Option<bool> mapOption = new("--map")
+        {
+            Description = "Interactively label controls and write them to a per-device JSON mapping file."
+        };
+
+        Option<string?> mapOutputOption = new("--map-output")
+        {
+            Description = "Directory for generated mapping files. Default: the current directory.",
+            HelpName = "DIR"
+        };
+
+        Option<string?> mapFileOption = new("--map-file")
+        {
+            Description = "Explicit mapping file path, overriding the device-derived file name.",
+            HelpName = "PATH"
+        };
+
         RootCommand rootCommand = new("Scans DirectInput game controllers and identifies button, axis, and POV input.")
         {
             pollFrequencyOption,
             axisChangeOption,
-            axisResetOption
+            axisResetOption,
+            mapOption,
+            mapOutputOption,
+            mapFileOption
         };
 
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -39,7 +59,10 @@ public static class ScannerCommandLine
             ScannerCommandLineOverrides overrides = new(
                 parseResult.GetValue(pollFrequencyOption),
                 parseResult.GetValue(axisChangeOption),
-                parseResult.GetValue(axisResetOption));
+                parseResult.GetValue(axisResetOption),
+                parseResult.GetValue(mapOption),
+                parseResult.GetValue(mapOutputOption),
+                parseResult.GetValue(mapFileOption));
 
             await runScanner(overrides, cancellationToken);
         });

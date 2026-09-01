@@ -3,9 +3,9 @@
 ## Projects
 
 - `DirectInputWatcher`: reusable Windows `.NET 10` class library for DirectInput discovery, USB hot-plug reconciliation, controller polling, normalization, baseline calibration, caching, filtering, and Rx event streams.
-- `DScanner`: console host containing System.CommandLine, Generic Host integration, Serilog setup, terminal rendering, and Ctrl+Q shutdown.
+- `DScanner`: console host containing System.CommandLine, Generic Host integration, Serilog setup, terminal rendering, keyboard input, and the interactive control-mapping mode.
 - `DirectInputWatcher.Tests`: reusable watcher, Rx, configuration, filtering, lifecycle, and cache tests.
-- `DScanner.Tests`: console-specific command-line, UI-label, and quit-service tests.
+- `DScanner.Tests`: console-specific command-line, UI-label, key-pump, and control-mapping tests.
 
 `DirectInputWatcher` groups files by responsibility:
 
@@ -27,6 +27,27 @@ The library does not reference `Microsoft.Extensions.Hosting` and does not start
 - `Inputs`: button, normalized axis, and POV events.
 
 Historical lifecycle events are not replayed. Recoverable failures are emitted as `WatcherError` values instead of terminating either observable.
+
+## Console input
+
+`ConsoleKeyPump` is the only reader of console keystrokes. It checks Ctrl+Q first and shuts the
+host down, then offers the key to the innermost active `IConsoleKeyDispatcher.Capture` handler.
+Never call `Console.ReadKey` or `Console.ReadLine` elsewhere: the pump would race it for keys and
+`ConsoleUiService` would paint over the echo. Read a line through `IConsoleUi.ReadLabelAsync`,
+which edits on the prompt row rendered directly above the footer.
+
+## Mapping mode
+
+`--map` adds `DeviceMappingService`, which loops: read a label, capture the next input event,
+append it to that device's JSON file. Notes that are easy to get wrong:
+
+- The first captured event locks the session to one device; later events from others are ignored.
+- `PovChangedEvent` with `RawValue` of `-1` is the release, not a binding, and is skipped.
+- A settle delay after each capture stops a button release or axis recentre being read as the next binding.
+- Axes emit nothing until baseline calibration finishes, so the first prompt waits for it.
+- The prompt is shown from inside the capture, after subscribing, so no input can be missed.
+- Files are rewritten in full after every capture using an atomic temp-then-move, and re-binding an
+  existing control replaces its label instead of appending a duplicate.
 
 ## Configuration
 
@@ -55,7 +76,7 @@ DirectInput cannot natively enumerate by VID/PID. Filters avoid acquiring and po
 ## Separation rules
 
 - Keep DirectInput, WMI, Rx state, cache, and reusable event models in `DirectInputWatcher`.
-- Keep all console strings, colors, layout, key handling, logging-provider configuration, and host lifetime in `DScanner`.
+- Keep all console strings, colors, layout, key handling, mapping files, logging-provider configuration, and host lifetime in `DScanner`.
 - The library may depend on Microsoft DI/configuration/options/logging, but not Hosting, System.CommandLine, Serilog, or console UI types.
 - Use typed lifecycle/input events across the project boundary; do not add UI callbacks to the library.
 
