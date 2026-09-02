@@ -199,15 +199,15 @@ public sealed class DeviceMappingService(
         string prompt,
         CancellationToken cancellationToken)
     {
-        TaskCompletionSource<ControllerInputEvent?> completion =
+        TaskCompletionSource<CapturedInput?> completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // Prefer axis events over button events when both are reported for the
-        // same physical control (some controllers expose triggers as both a
-        // button and an axis). When a button arrives first, wait a short
-        // race window for a corresponding axis event; if one appears, use it.
+        // Some controllers report one physical action as both axis movement and
+        // a button press. Wait briefly so we can prompt the user to choose.
         TimeSpan raceWindow = TimeSpan.FromMilliseconds(100);
-        CancellationTokenSource? pendingButtonCts = null;
+        ControllerInputEvent? pendingPrimary = null;
+        CancellationTokenSource? pendingPrimaryCts = null;
+        int pendingVersion = 0;
         object gate = new();
 
         using IDisposable subscription = watcher.Inputs.Subscribe(inputEvent =>
@@ -219,49 +219,82 @@ public sealed class DeviceMappingService(
 
             switch (inputEvent)
             {
-                case AxisMovedEvent axis:
+                case AxisMovedEvent:
+                case ButtonPressedEvent:
+                    ControllerInputEvent? ambiguousPrimary = null;
+                    ControllerInputEvent? ambiguousSecondary = null;
+                    int localVersion = 0;
+                    CancellationToken localCt;
+
                     lock (gate)
                     {
-                        pendingButtonCts?.Cancel();
-                        pendingButtonCts?.Dispose();
-                        pendingButtonCts = null;
+                        if (completion.Task.IsCompleted)
+                        {
+                            return;
+                        }
+
+                        if (pendingPrimary is not null && IsAxisButtonPair(pendingPrimary, inputEvent))
+                        {
+                            ambiguousPrimary = pendingPrimary;
+                            ambiguousSecondary = inputEvent;
+                            pendingPrimary = null;
+                            pendingVersion++;
+                            pendingPrimaryCts?.Cancel();
+                            pendingPrimaryCts?.Dispose();
+                            pendingPrimaryCts = null;
+                        }
+                        else
+                        {
+                            pendingVersion++;
+                            localVersion = pendingVersion;
+                            pendingPrimary = inputEvent;
+                            pendingPrimaryCts?.Cancel();
+                            pendingPrimaryCts?.Dispose();
+                            pendingPrimaryCts = new CancellationTokenSource();
+                            localCt = pendingPrimaryCts.Token;
+
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await Task.Delay(raceWindow, localCt).ConfigureAwait(false);
+                                }
+                                catch (OperationCanceledException)
+                                {
+                                    return;
+                                }
+
+                                ControllerInputEvent? resolved = null;
+                                lock (gate)
+                                {
+                                    if (completion.Task.IsCompleted || pendingVersion != localVersion)
+                                    {
+                                        return;
+                                    }
+
+                                    resolved = pendingPrimary;
+                                    pendingPrimary = null;
+                                }
+
+                                if (resolved is not null)
+                                {
+                                    completion.TrySetResult(new CapturedInput(resolved, null));
+                                }
+                            });
+
+                            return;
+                        }
                     }
 
-                    completion.TrySetResult(axis);
-                    break;
-
-                case ButtonPressedEvent button:
-                    lock (gate)
+                    if (ambiguousPrimary is not null && ambiguousSecondary is not null)
                     {
-                        // Cancel any existing pending button (we only care about
-                        // the most recent press).
-                        pendingButtonCts?.Cancel();
-                        pendingButtonCts?.Dispose();
-
-                        pendingButtonCts = new CancellationTokenSource();
-                        CancellationToken localCt = pendingButtonCts.Token;
-
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await Task.Delay(raceWindow, localCt).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                return;
-                            }
-
-                            // If no axis arrived during the race window, accept the
-                            // button press.
-                            completion.TrySetResult(button);
-                        });
+                        completion.TrySetResult(new CapturedInput(ambiguousPrimary, ambiguousSecondary));
                     }
 
                     break;
 
                 default:
-                    completion.TrySetResult(inputEvent);
+                    completion.TrySetResult(new CapturedInput(inputEvent, null));
                     break;
             }
         });
@@ -280,8 +313,67 @@ public sealed class DeviceMappingService(
         // Announce only once input is actually being listened for.
         consoleUi.SetPrompt(prompt);
 
-        return await completion.Task.WaitAsync(cancellationToken);
+        CapturedInput? captured = await completion.Task.WaitAsync(cancellationToken);
+        if (captured is null)
+        {
+            return null;
+        }
+
+        if (captured.Secondary is null)
+        {
+            return captured.Primary;
+        }
+
+        return await ResolveAmbiguousInputAsync(captured.Primary, captured.Secondary, cancellationToken);
     }
+
+    private async Task<ControllerInputEvent?> ResolveAmbiguousInputAsync(
+        ControllerInputEvent first,
+        ControllerInputEvent second,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAxisButtonPair(first, second))
+        {
+            return first;
+        }
+
+        AxisMovedEvent axis = first as AxisMovedEvent ?? (AxisMovedEvent)second;
+        ButtonPressedEvent button = first as ButtonPressedEvent ?? (ButtonPressedEvent)second;
+        string choicePrompt =
+            $"Detected both axis {axis.AxisNumber} ({axis.AxisName}) and button {button.ButtonNumber}. "
+            + "Map (A)xis or (B)utton (Esc to skip): ";
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            string? choice = await consoleUi.ReadLabelAsync(choicePrompt, cancellationToken);
+            if (choice is null)
+            {
+                return null;
+            }
+
+            if (choice.Equals("a", StringComparison.OrdinalIgnoreCase)
+                || choice.Equals("axis", StringComparison.OrdinalIgnoreCase))
+            {
+                return axis;
+            }
+
+            if (choice.Equals("b", StringComparison.OrdinalIgnoreCase)
+                || choice.Equals("button", StringComparison.OrdinalIgnoreCase))
+            {
+                return button;
+            }
+
+            consoleUi.AddEvent(
+                "Invalid selection; enter A for axis or B for button.",
+                ConsoleColor.Yellow);
+        }
+
+        return null;
+    }
+
+    private static bool IsAxisButtonPair(ControllerInputEvent first, ControllerInputEvent second) =>
+        first is AxisMovedEvent && second is ButtonPressedEvent
+        || first is ButtonPressedEvent && second is AxisMovedEvent;
 
     private bool IsCapturable(ControllerInputEvent inputEvent)
     {
@@ -403,4 +495,8 @@ public sealed class DeviceMappingService(
             _entries.Count,
             _filePath);
     }
+
+    private sealed record CapturedInput(
+        ControllerInputEvent Primary,
+        ControllerInputEvent? Secondary);
 }

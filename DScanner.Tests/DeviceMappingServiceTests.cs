@@ -54,6 +54,46 @@ public sealed class DeviceMappingServiceTests
     }
 
     [Fact]
+    public async Task SimultaneousAxisAndButton_CanChooseButton()
+    {
+        _ui.Labels.Enqueue("Throttle");
+        _ui.Labels.Enqueue("b");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() =>
+        {
+            _watcher.InputSubject.OnNext(Axis(DeviceA, 2, 0.9));
+            _watcher.InputSubject.OnNext(Button(DeviceA, 6));
+        });
+
+        await RunAsync();
+
+        DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal(DeviceMappingInputType.Button, entry.Type);
+        Assert.Equal(6, entry.Index);
+    }
+
+    [Fact]
+    public async Task SimultaneousAxisAndButton_CanChooseAxis()
+    {
+        _ui.Labels.Enqueue("Throttle");
+        _ui.Labels.Enqueue("axis");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() =>
+        {
+            _watcher.InputSubject.OnNext(Button(DeviceA, 6));
+            _watcher.InputSubject.OnNext(Axis(DeviceA, 2, 0.9));
+        });
+
+        await RunAsync();
+
+        DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal(DeviceMappingInputType.Axis, entry.Type);
+        Assert.Equal(2, entry.Index);
+    }
+
+    [Fact]
     public async Task CentredPov_IsIgnoredSoTheReleaseIsNotCaptured()
     {
         _ui.Labels.Enqueue("Hat Up");
