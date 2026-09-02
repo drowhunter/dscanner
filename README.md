@@ -1,103 +1,203 @@
 # DScanner
 
-A Windows `.NET 10` console application that monitors DirectInput game controllers at 15 Hz. It uses dependency injection, Reactive Extensions, a dedicated terminal UI, and `ILogger` file logging to identify button presses, significant axis movement, and POV hat changes.
+A Windows console application that watches DirectInput game controllers and tells you exactly which
+control you just touched. Press a button, nudge an axis, or click a POV hat, and the terminal names
+it — device, control kind, and number.
 
-The solution also contains the reusable `DirectInputWatcher` class library. `DScanner` references that library and contains only console hosting, command-line, logging-provider, and UI concerns.
+It solves a specific problem: working out what a flight stick, wheel, pedal set, or button box
+actually reports, so you can bind it in a game, a sim, or your own code. `--map` takes that further
+and records your own labels for each control into a JSON file.
 
-The console is a dedicated terminal UI:
+The repository also contains `DirectInputWatcher`, the reusable class library that does the real
+work. `DScanner` is a thin console host over it.
 
-- Line 1 displays the application title.
-- Line 3 displays DirectInput enumeration progress.
-- Lines 5 through the second-last line scroll controller and USB events.
-- The last line permanently displays `Press Ctrl+Q to quit`.
+## Requirements
 
-Controller names include the first eight characters of their DirectInput instance GUID, such as `Identical Joystick [ID 31a184c3]`, so identical devices remain distinguishable.
+- Windows (DirectInput and WMI are Windows-only)
+- .NET 10 SDK
 
-Press `Ctrl+Q` while the scanner console is focused to stop the application cleanly. `ILogger` output is written to the log file rather than mixed into the terminal UI.
+## Quick start
 
-## Run
-
-```powershell
+```bash
 dotnet run --project .\DScanner\DScanner.csproj
 ```
 
-Show all command-line options:
+Press `Ctrl+Q` while the console has focus to stop cleanly.
 
-```powershell
+Show every option:
+
+```bash
 dotnet run --project .\DScanner\DScanner.csproj -- --help
 ```
 
-Example:
+## The terminal UI
 
-```powershell
-dotnet run --project .\DScanner\DScanner.csproj -- `
-  --poll-frequency-hz 20 `
-  --axis-change-threshold 0.30 `
-  --axis-reset-threshold 0.15
-```
+The console is a fixed-layout terminal UI, not a scrolling log:
 
-Each axis is normalized to `-1.0..1.0`. During the first second after a controller is acquired, its latest readings establish the resting baseline without producing axis events. The application then logs once when movement from that settled baseline reaches `0.25`, and rearms after returning within `0.20`.
+- Line 1 — application title.
+- Line 2 — status: device count, poll frequency, enumeration mode.
+- Line 3 — DirectInput enumeration progress, gaining a period per second while it scans.
+- Line 5 to the second-last line — a scrolling window of controller and USB events.
+- Last line — `Press Ctrl+Q to quit`.
 
-## Mapping controls
+Controller names carry the first eight characters of their DirectInput instance GUID, such as
+`Identical Joystick [ID 31a184c3]`, so two of the same model stay distinguishable. Each device is
+assigned its own colour, and in button and axis events only the device name is coloured — the
+instance ID and the event detail stay white.
 
-`--map` runs an interactive labelling loop instead of watching passively. Type a label, press
-`Enter`, then press the button, move the axis, or press the POV hat you want that label bound to.
-The loop repeats until you submit an empty label. `Esc` skips the control currently being waited
-for, and `Ctrl+Q` still quits at any point.
+`ILogger` output goes to the log file rather than being mixed into the UI, so the layout never gets
+trampled.
 
-```powershell
+## Watch mode (default)
+
+### Discovery
+
+Successful discoveries are cached in `C:\ProgramData\DScanner\devices.json`. On later runs the
+cached controllers are opened immediately while the slow native DirectInput enumeration refreshes
+the cache in the background — so the app is useful within a second instead of waiting for a full
+scan. Cached discovery events are prefixed with an asterisk: `* Found Identical Joystick [ID
+31a184c3]`. A cached device counts as connected only once it has actually been acquired.
+
+Enumeration deliberately skips Windows-wide XInput detection and per-device property probes, which
+is what makes it fast. The trade-off is that XInput-compatible controllers (Xbox pads) can appear in
+the results alongside true DirectInput devices.
+
+USB hot-plug is detected through WMI `__InstanceCreationEvent` and `__InstanceDeletionEvent`
+notifications for `Win32_USBControllerDevice`, not by polling — plug a stick in mid-run and it is
+picked up. Bluetooth and purely virtual device changes do not trigger a refresh.
+
+### What counts as an event
+
+- **Buttons** report released-to-pressed transitions only, so holding a button logs once.
+- **Axes** are normalized to `-1.0..1.0`. For the first second after a controller is acquired its
+  readings establish a resting baseline and produce no events — this is what stops a drifting or
+  off-centre stick from flooding the log. After that, movement of `0.25` from the baseline logs
+  once, and the axis rearms after returning within `0.20`. That gap is hysteresis: without it an
+  axis resting near the threshold would chatter.
+- **POV hats** report changes in degrees. `-1` means centred or released.
+
+Thresholds are tunable — see the options below.
+
+## Mapping mode (`--map`)
+
+```bash
 dotnet run --project .\DScanner\DScanner.csproj -- --map
 ```
 
-The first control you press decides which device the session maps; input from any other
-controller is ignored with a warning. Bindings are written to `<Device Name>.json` in the current
-directory after every capture, so an interrupted session keeps everything captured so far. Use
-`--map-output <DIR>` to change the directory, or `--map-file <PATH>` to name the file yourself —
-useful when two identical controllers would otherwise share one file.
+Instead of watching passively, this walks you through labelling controls:
+
+1. If exactly one controller is connected it is selected automatically. If several are, you get a
+   numbered list and pick one. Everything from here on is scoped to that device.
+2. Type a label and press `Enter`.
+3. Press the button, move the axis, or click the POV hat you want that label bound to.
+4. Repeat. Submit an empty label to finish.
+
+`Esc` skips the control currently being waited on. `Ctrl+Q` still quits at any point. Input from any
+other controller is ignored, with a warning the first time each stray device appears.
+
+Bindings are written to `<Device Name>.json` in the current directory, rewritten in full after every
+single capture, so an interrupted session keeps everything captured so far. An existing file is
+loaded and extended rather than overwritten, and re-binding a control that is already mapped
+replaces its label instead of adding a duplicate.
 
 ```json
 [
-  { "label": "Fire", "buttonNumber": 0, "type": "button" },
-  { "label": "Throttle Up", "buttonNumber": 2, "type": "axis", "direction": 1 },
-  { "label": "Hat Up", "buttonNumber": 0, "type": "pov" }
+  { "label": "Fire", "index": 0, "value": 1, "type": "button" },
+  { "label": "Throttle Up (Y)", "index": 1, "value": 1, "type": "axis" },
+  { "label": "Hat Up", "index": 0, "value": 0, "type": "pov" }
 ]
 ```
 
-`buttonNumber` holds the button, axis, or POV number, depending on `type`. Axis entries also carry
-`direction` (`-1` or `1`) so that pushing one axis each way produces two distinct bindings.
-Re-binding a control that is already mapped replaces its label rather than adding a duplicate, and
-an existing mapping file is loaded and extended rather than overwritten.
+- `index` is the control number on the device — button index, axis index, or POV index.
+- `value` depends on `type`: buttons record `1`; axes record the sign of the axis position when it
+  was captured, `-1` or `1`, so pushing one axis each way gives two distinct bindings; POVs record
+  the hat's position in degrees, or `-1` for centred.
+- Axis labels get the DirectInput axis name appended automatically — `X`, `Y`, `Z`, `Rx`, `Ry`,
+  `Rz`, or a slider — so `Throttle Up` on the Y axis is stored as `Throttle Up (Y)`.
 
-Because axes emit nothing until their resting baseline settles, the first prompt appears once a
-controller is connected and calibrated.
+Two details worth knowing. Some controllers expose a trigger as both a button and an axis; when both
+fire together, mapping waits a 100 ms race window and prefers the axis, since that is almost always
+the binding you wanted. And because axes emit nothing until their baseline settles, the first prompt
+waits for calibration to finish before appearing.
 
-Fast enumeration avoids Windows-wide XInput detection and per-device DirectInput property probes. XInput-compatible controllers can therefore appear in the results.
+If two identical controllers would otherwise share one file name, use `--map-file` to name the file
+yourself.
 
-Successful discovery is cached in `C:\ProgramData\DScanner\devices.json`. On later runs, cached controllers are opened immediately while the slow native DirectInput enumeration refreshes the cache in the background.
-An asterisk prefixes cached discovery events, for example `* Found Identical Joystick [ID 31a184c3]`.
-The terminal renders all `Found` events in bright green.
-For button and axis events, only the controller name is highlighted in pink-like bright red; the instance ID and event details remain white.
+`--map` needs an interactive console; with input redirected it exits with an error rather than
+hanging on a prompt nobody can answer.
 
-POV values are displayed in degrees. A value of `-1` means the hat is depressed/centered.
+## Command-line options
 
-Settings can be changed in `DScanner\appsettings.json`, through standard .NET configuration providers under the `Scanner` section, or with command-line options. Command-line values take precedence.
+| Option | Description |
+| --- | --- |
+| `--poll-frequency-hz <HZ>` | Polling frequency in samples per second. Default `15`. Also `--poll-frequency`. |
+| `--axis-change-threshold <VALUE>` | Normalized movement from baseline that triggers an event. Range `>0` to `2`. Default `0.25`. |
+| `--axis-reset-threshold <VALUE>` | Normalized distance from baseline that rearms an axis. Must be below the change threshold. Default `0.20`. |
+| `--map` | Run interactive control mapping instead of watching. |
+| `--map-output <DIR>` | Directory for generated mapping files. Default: the current directory. |
+| `--map-file <PATH>` | Explicit mapping file path, overriding the device-derived name. |
 
-USB device changes are detected through Rx streams around Windows Management Instrumentation `__InstanceCreationEvent` and `__InstanceDeletionEvent` notifications for `Win32_USBControllerDevice` associations rather than periodic DirectInput enumeration. Bluetooth and purely virtual device changes do not trigger a refresh.
+Example:
 
-Each run overwrites `C:\ProgramData\DScanner\logs\dscanner.log`, so the file contains only the current run. The same messages are also written to the console when the application is run interactively.
+```bash
+dotnet run --project .\DScanner\DScanner.csproj -- --poll-frequency-hz 20 --axis-change-threshold 0.30 --axis-reset-threshold 0.15
+```
 
-While DirectInput enumerates controllers, the console displays `Enumerating DirectInput devices` and adds one period per second until discovery completes.
+## Configuration
 
-## DirectInputWatcher library
+Settings can come from `DScanner\appsettings.json`, from any standard .NET configuration provider
+under the `DirectInputWatcher` section, or from the command line. Command-line values win.
 
-`DirectInputWatcher` exposes a manually controlled injectable service with separate lifecycle and input observables. It does not depend on `Microsoft.Extensions.Hosting` and does not start automatically.
+```json
+{
+  "DirectInputWatcher": {
+    "PollFrequency": 15,
+    "AxisChangeThreshold": 0.25,
+    "AxisResetThreshold": 0.20,
+    "AxisBaselineCalibrationDuration": "00:00:01",
+    "DeviceCachePath": "C:\\ProgramData\\DScanner\\devices.json",
+    "Whitelist": [ "346E:0003" ],
+    "Blacklist": []
+  }
+}
+```
+
+`Whitelist` and `Blacklist` take `VID:PID` pairs in hex. The blacklist always wins; when the
+whitelist is non-empty, only listed devices are watched and unidentified ones are excluded. Filters
+cut out the work of acquiring and polling devices you do not care about, but DirectInput cannot
+enumerate by VID/PID natively, so a first uncached discovery still runs the full native scan.
+
+## Logging
+
+Each run truncates and rewrites `C:\ProgramData\DScanner\logs\dscanner.log`, so the file only ever
+holds the current run. The file is opened shared, so you can tail it while the app runs:
+
+```bash
+Get-Content -Wait C:\ProgramData\DScanner\logs\dscanner.log
+```
+
+Log lines carry more detail than the terminal — axis entries include the baseline and the signed
+change, not just the current value.
+
+## Repository layout
+
+| Project | Purpose |
+| --- | --- |
+| `DirectInputWatcher` | The reusable library: discovery, USB reconciliation, polling, normalization, calibration, caching, filtering, and Rx event streams. |
+| `DirectInputWatcher.Configuration` | `IConfiguration`-binding registration overload, kept separate so the core library stays free of a configuration dependency. |
+| `DScanner` | The console host: command line, terminal UI, keyboard input, logging setup, and mapping mode. |
+| `DirectInputWatcher.Tests` | Library tests — watcher, Rx pipeline, configuration, filtering, lifecycle, cache. |
+| `DScanner.Tests` | Console tests — command line, device labels, key pump, control mapping. |
+
+See [AGENTS.md](AGENTS.md) for the architectural rules that keep the split clean.
+
+## Using the library directly
+
+`DirectInputWatcher` is an injectable service with separate lifecycle and input observables. It does
+not reference `Microsoft.Extensions.Hosting` and never starts itself — you call `StartAsync`.
 
 ```csharp
 using DirectInputWatcher;
-
-services
-    .AddOptions<DirectInputWatcherOptions>()
-    .Bind(configuration.GetSection("DirectInputWatcher"));
 
 services.AddDirectInputWatcher(options =>
 {
@@ -121,7 +221,9 @@ await watcher.StartAsync(cancellationToken);
 await watcher.StopAsync(cancellationToken);
 ```
 
-It can also use only defaults or previously configured options:
+Registration uses the standard options pipeline: defaults first, then any configuration you bound
+beforehand, then the setup action last so it can override anything. Omitting `DeviceCachePath`
+disables caching.
 
 ```csharp
 services
@@ -130,22 +232,19 @@ services
 services.AddDirectInputWatcher();
 ```
 
-```json
-{
-  "DirectInputWatcher": {
-    "PollFrequency": 15,
-    "AxisChangeThreshold": 0.25,
-    "AxisResetThreshold": 0.20,
-    "AxisBaselineCalibrationDuration": "00:00:01",
-    "DeviceCachePath": "C:\\ProgramData\\MyApp\\devices.json",
-    "Whitelist": [ "346E:0003" ],
-    "Blacklist": []
-  }
-}
+Every `Lifecycle` subscriber immediately receives one `CurrentDevicesSnapshot` holding only the
+controllers connected at that moment, then live `DeviceConnected`, `DeviceDisconnected`,
+`UsbDeviceChanged`, `ScanStarted`, `ScanProgress`, `ScanCompleted`, and recoverable `WatcherError`
+events. History is not replayed. Recoverable failures arrive as `WatcherError` values rather than
+terminating either observable.
+
+`Inputs` carries `ButtonPressedEvent`, `AxisMovedEvent`, and `PovChangedEvent`.
+
+## Building and testing
+
+```bash
+dotnet test DScanner.slnx -c Release
 ```
 
-`AddDirectInputWatcher` uses the standard options pipeline. A new options object starts with sensible defaults, previously registered configuration is applied, and the optional setup action runs last so it can override any value directly. Caching is disabled when `DeviceCachePath` is omitted. Blacklist entries always win; when the whitelist is non-empty, only listed devices are monitored.
-
-Every `Lifecycle` subscriber immediately receives one `CurrentDevicesSnapshot` containing only controllers connected at that time. It then receives live `DeviceConnected`, `DeviceDisconnected`, `UsbDeviceChanged`, `ScanStarted`, `ScanProgress`, `ScanCompleted`, and recoverable `WatcherError` events. Historical disconnections and progress events are not replayed.
-
-USB devices connected later are detected through WMI and automatically trigger DirectInput reconciliation. VID/PID filters reduce acquisition and polling work and accelerate cached startup, but DirectInput does not support native VID/PID-filtered enumeration, so an uncached discovery still requires the full native enumeration call.
+For hardware-facing changes, also verify by hand on Windows: cached startup, background native
+reconciliation, USB hot-plug, live input events, and clean shutdown.
