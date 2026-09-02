@@ -3,6 +3,7 @@
 ## Projects
 
 - `DirectInputWatcher`: reusable Windows `.NET 10` class library for DirectInput discovery, USB hot-plug reconciliation, controller polling, normalization, baseline calibration, caching, filtering, and Rx event streams.
+- `DirectInputWatcher.Configuration`: configuration integration project providing `IConfiguration`-based watcher registration.
 - `DScanner`: console host containing System.CommandLine, Generic Host integration, Serilog setup, terminal rendering, keyboard input, and the interactive control-mapping mode.
 - `DirectInputWatcher.Tests`: reusable watcher, Rx, configuration, filtering, lifecycle, and cache tests.
 - `DScanner.Tests`: console-specific command-line, UI-label, key-pump, and control-mapping tests.
@@ -14,6 +15,7 @@
 - `Models`: device descriptors and internal polling snapshots.
 - `DirectInput`: native enumeration, acquisition, cache, filtering, and normalization.
 - `Reactive`: input detection and lifecycle state publication.
+- `ReactiveExtensions`: Rx recovery and restart extensions.
 - `Usb`: WMI change observation and USB identity parsing.
 - `Services`: watcher orchestration.
 
@@ -23,14 +25,15 @@ Register the watcher with `AddDirectInputWatcher`, resolve `IDirectInputWatcher`
 
 The library does not reference `Microsoft.Extensions.Hosting` and does not start itself. It exposes:
 
-- `Lifecycle`: each subscriber first receives `CurrentDevicesSnapshot` containing only controllers currently connected, then live connection, disconnection, USB, scan progress, completion, and recoverable error events.
+- `Lifecycle`: each subscriber first receives `CurrentDevicesSnapshot` containing only controllers currently connected, then live `DeviceConnected`, `DeviceDisconnected`, `UsbDeviceChanged`, `ScanStarted`, `ScanProgress`, `ScanCompleted`, and recoverable `WatcherError` events.
 - `Inputs`: button, normalized axis, and POV events.
 
-Historical lifecycle events are not replayed. Recoverable failures are emitted as `WatcherError` values instead of terminating either observable.
+Each subscriber receives a current-device snapshot on subscribe; historical connection, disconnection, and scan events are not replayed. Recoverable failures are emitted as `WatcherError` values instead of terminating either observable.
 
 ## Console input
 
-`ConsoleKeyPump` is the only reader of console keystrokes. It checks Ctrl+Q first and shuts the
+`IConsoleKeySource` is the abstraction for console key input, and `ConsoleKeyPump` is the only
+consumer that reads it. It checks Ctrl+Q first and shuts the
 host down, then offers the key to the innermost active `IConsoleKeyDispatcher.Capture` handler.
 Never call `Console.ReadKey` or `Console.ReadLine` elsewhere: the pump would race it for keys and
 `ConsoleUiService` would paint over the echo. Read a line through `IConsoleUi.ReadLabelAsync`,
