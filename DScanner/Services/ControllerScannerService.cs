@@ -112,7 +112,8 @@ public sealed class ControllerScannerService(
         switch (inputEvent)
         {
             case ButtonPressedEvent button:
-                consoleUi.AddHighlightedEvent(
+                consoleUi.AddDeviceHighlightedEvent(
+                    button.DeviceId,
                     button.DeviceName,
                     $" {DirectInputDeviceLabel.FormatIdentifier(button.DeviceId)} button {button.ButtonNumber} pressed",
                     consoleUi.GetDeviceColor(button.DeviceId));
@@ -123,7 +124,8 @@ public sealed class ControllerScannerService(
                 break;
 
             case AxisMovedEvent axis:
-                consoleUi.AddHighlightedEvent(
+                consoleUi.AddDeviceHighlightedEvent(
+                    axis.DeviceId,
                     axis.DeviceName,
                     $" {DirectInputDeviceLabel.FormatIdentifier(axis.DeviceId)} axis {axis.AxisNumber} ({axis.AxisName}) moved to {axis.Value:F3}",
                     consoleUi.GetDeviceColor(axis.DeviceId));
@@ -138,7 +140,8 @@ public sealed class ControllerScannerService(
                 break;
 
             case PovChangedEvent pov:
-                consoleUi.AddEvent(
+                consoleUi.AddDeviceEvent(
+                    pov.DeviceId,
                     $"{DirectInputDeviceLabel.Format(pov.DeviceName, pov.DeviceId)} POV {pov.PovNumber} moved to {pov.Degrees:0.##} degrees");
                 logger.LogInformation(
                     "{DeviceName} POV {PovNumber} moved to {Degrees:0.##} degrees",

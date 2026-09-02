@@ -93,28 +93,97 @@ public sealed class DeviceMappingService(
 
     private async Task WaitForDeviceAsync(CancellationToken cancellationToken)
     {
-        TaskCompletionSource connected =
+        // Wait for a snapshot that contains available devices, then let the
+        // user choose which device to map. This ensures mapping mode ignores
+        // input from other devices.
+        TaskCompletionSource<CurrentDevicesSnapshot?> connected =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using IDisposable subscription = watcher.Lifecycle.Subscribe(lifecycleEvent =>
         {
-            bool hasDevice = lifecycleEvent switch
+            if (lifecycleEvent is CurrentDevicesSnapshot snapshot && snapshot.Devices.Count > 0)
             {
-                CurrentDevicesSnapshot snapshot => snapshot.Devices.Count > 0,
-                DeviceConnected => true,
-                _ => false
-            };
-
-            if (hasDevice)
+                connected.TrySetResult(snapshot);
+            }
+            else if (lifecycleEvent is DeviceConnected connectedEvent)
             {
-                connected.TrySetResult();
+                // A single device connected event is not as useful as the
+                // snapshot, but if nothing else arrives, treat it as a signal
+                // to query devices.
+                connected.TrySetResult(null);
             }
         });
 
-        if (!connected.Task.IsCompleted)
+        consoleUi.SetPrompt("Waiting for controller enumeration...");
+        CurrentDevicesSnapshot? snapshot = await connected.Task.WaitAsync(cancellationToken);
+
+        // If the watcher delivered a snapshot, present the devices for
+        // selection. If not, fall back to waiting for a snapshot through
+        // the lifecycle subscription; but for simplicity, request a brief
+        // delay and try again.
+        if (snapshot is null)
         {
-            consoleUi.SetPrompt("Waiting for a controller...");
-            await connected.Task.WaitAsync(cancellationToken);
+            // Give the watcher a moment to emit a snapshot.
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+            // Try to synchronously get a snapshot from lifecycle by waiting
+            // for the next CurrentDevicesSnapshot event.
+            TaskCompletionSource<CurrentDevicesSnapshot?> next =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using IDisposable sub2 = watcher.Lifecycle.Subscribe(e =>
+            {
+                if (e is CurrentDevicesSnapshot s && s.Devices.Count > 0) next.TrySetResult(s);
+            });
+
+            snapshot = await next.Task.WaitAsync(cancellationToken);
+        }
+
+        // At this point we should have a snapshot with devices.
+        if (snapshot is null || snapshot.Devices.Count == 0)
+        {
+            // No devices found; nothing to do.
+            throw new InvalidOperationException("No controllers were found to map.");
+        }
+
+        // If there's only one device, select it automatically.
+        if (snapshot.Devices.Count == 1)
+        {
+            var device = snapshot.Devices[0];
+            _deviceId = device.InstanceGuid;
+            _deviceName = device.Name;
+            _filePath = store.ResolvePath(_deviceName, _deviceId.Value);
+            _entries.AddRange(store.Load(_filePath));
+
+            consoleUi.AddEvent($"Selected {DirectInputDeviceLabel.Format(_deviceName, _deviceId.Value)}.", ConsoleColor.Cyan);
+        }
+        else
+        {
+            // Present a numbered list and ask the user to pick one.
+            consoleUi.AddEvent("Multiple controllers detected; choose one to map:", ConsoleColor.Cyan);
+            for (int i = 0; i < snapshot.Devices.Count; i++)
+            {
+                var d = snapshot.Devices[i];
+                consoleUi.AddEvent($"  [{i}] {DirectInputDeviceLabel.Format(d.Name, d.InstanceGuid)}");
+            }
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                string? selection = await consoleUi.ReadLabelAsync("Enter device number: ", cancellationToken);
+                if (int.TryParse(selection, out int index)
+                    && index >= 0
+                    && index < snapshot.Devices.Count)
+                {
+                    var device = snapshot.Devices[index];
+                    _deviceId = device.InstanceGuid;
+                    _deviceName = device.Name;
+                    _filePath = store.ResolvePath(_deviceName, _deviceId.Value);
+                    _entries.AddRange(store.Load(_filePath));
+
+                    consoleUi.AddEvent($"Selected {DirectInputDeviceLabel.Format(_deviceName, _deviceId.Value)}.", ConsoleColor.Cyan);
+                    break;
+                }
+
+                consoleUi.AddEvent("Invalid selection; try again.", ConsoleColor.Yellow);
+            }
         }
 
         // Axes emit nothing until their startup baseline is established.
@@ -133,6 +202,14 @@ public sealed class DeviceMappingService(
         TaskCompletionSource<ControllerInputEvent?> completion =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // Prefer axis events over button events when both are reported for the
+        // same physical control (some controllers expose triggers as both a
+        // button and an axis). When a button arrives first, wait a short
+        // race window for a corresponding axis event; if one appears, use it.
+        TimeSpan raceWindow = TimeSpan.FromMilliseconds(100);
+        CancellationTokenSource? pendingButtonCts = null;
+        object gate = new();
+
         using IDisposable subscription = watcher.Inputs.Subscribe(inputEvent =>
         {
             if (!IsCapturable(inputEvent))
@@ -140,7 +217,53 @@ public sealed class DeviceMappingService(
                 return;
             }
 
-            completion.TrySetResult(inputEvent);
+            switch (inputEvent)
+            {
+                case AxisMovedEvent axis:
+                    lock (gate)
+                    {
+                        pendingButtonCts?.Cancel();
+                        pendingButtonCts?.Dispose();
+                        pendingButtonCts = null;
+                    }
+
+                    completion.TrySetResult(axis);
+                    break;
+
+                case ButtonPressedEvent button:
+                    lock (gate)
+                    {
+                        // Cancel any existing pending button (we only care about
+                        // the most recent press).
+                        pendingButtonCts?.Cancel();
+                        pendingButtonCts?.Dispose();
+
+                        pendingButtonCts = new CancellationTokenSource();
+                        CancellationToken localCt = pendingButtonCts.Token;
+
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await Task.Delay(raceWindow, localCt).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                return;
+                            }
+
+                            // If no axis arrived during the race window, accept the
+                            // button press.
+                            completion.TrySetResult(button);
+                        });
+                    }
+
+                    break;
+
+                default:
+                    completion.TrySetResult(inputEvent);
+                    break;
+            }
         });
 
         using IDisposable escape = keyDispatcher.Capture(key =>
@@ -224,10 +347,9 @@ public sealed class DeviceMappingService(
         }
 
         logger.LogInformation(
-            "Mapped {Label} to {MappingType} {MappingNumber} (replaced {ReplacedLabel}).",
+            "Mapped {Label} to {Description} (replaced {ReplacedLabel}).",
             label,
-            entry.Type,
-            entry.ButtonNumber,
+            description,
             replaced ?? "nothing");
     }
 
@@ -237,17 +359,21 @@ public sealed class DeviceMappingService(
             ButtonPressedEvent button => new DeviceMappingEntry(
                 label,
                 button.ButtonNumber,
+                1,
                 DeviceMappingInputType.Button),
 
             AxisMovedEvent axis => new DeviceMappingEntry(
-                label,
+                string.IsNullOrWhiteSpace(axis.AxisName)
+                    ? label
+                    : $"{label} ({axis.AxisName.Trim()})",
                 axis.AxisNumber,
-                DeviceMappingInputType.Axis,
-                axis.Difference < 0 ? -1 : 1),
+                Math.Sign(axis.Value),
+                DeviceMappingInputType.Axis),
 
             PovChangedEvent pov => new DeviceMappingEntry(
                 label,
                 pov.PovNumber,
+                pov.Degrees == -1 ? -1 : (int)pov.Degrees,
                 DeviceMappingInputType.Pov),
 
             _ => throw new ArgumentOutOfRangeException(nameof(captured))
@@ -256,10 +382,9 @@ public sealed class DeviceMappingService(
     private static string Describe(DeviceMappingEntry entry) =>
         entry.Type switch
         {
-            DeviceMappingInputType.Button => $"button {entry.ButtonNumber}",
-            DeviceMappingInputType.Axis =>
-                $"axis {entry.ButtonNumber} ({(entry.Direction < 0 ? "negative" : "positive")})",
-            _ => $"POV {entry.ButtonNumber}"
+            DeviceMappingInputType.Button => $"button {entry.Index}",
+            DeviceMappingInputType.Axis => $"axis {entry.Index} (value {entry.Value})",
+            _ => entry.Value == -1 ? $"POV {entry.Index} (centre)" : $"POV {entry.Index} ({entry.Value}°)"
         };
 
     private void ReportCompletion()

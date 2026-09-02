@@ -60,9 +60,9 @@ public sealed class DeviceMappingStoreTests : IDisposable
         store.Save(
             path,
             [
-                new DeviceMappingEntry("Fire", 0, DeviceMappingInputType.Button),
-                new DeviceMappingEntry("Throttle Up", 2, DeviceMappingInputType.Axis, 1),
-                new DeviceMappingEntry("Hat Up", 0, DeviceMappingInputType.Pov)
+                new DeviceMappingEntry("Fire", 0, 1, DeviceMappingInputType.Button),
+                new DeviceMappingEntry("Throttle Up", 2, 1, DeviceMappingInputType.Axis),
+                new DeviceMappingEntry("Hat Up", 0, -1, DeviceMappingInputType.Pov)
             ]);
 
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
@@ -73,16 +73,16 @@ public sealed class DeviceMappingStoreTests : IDisposable
 
         JsonElement button = root[0];
         Assert.Equal("Fire", button.GetProperty("label").GetString());
-        Assert.Equal(0, button.GetProperty("buttonNumber").GetInt32());
+        Assert.Equal(0, button.GetProperty("index").GetInt32());
+        Assert.Equal(1, button.GetProperty("value").GetInt32());
         Assert.Equal("button", button.GetProperty("type").GetString());
-        Assert.False(button.TryGetProperty("direction", out _));
 
         JsonElement axis = root[1];
         Assert.Equal("axis", axis.GetProperty("type").GetString());
-        Assert.Equal(1, axis.GetProperty("direction").GetInt32());
+        Assert.Equal(1, axis.GetProperty("value").GetInt32());
 
         Assert.Equal("pov", root[2].GetProperty("type").GetString());
-        Assert.False(root[2].TryGetProperty("direction", out _));
+        Assert.Equal(-1, root[2].GetProperty("value").GetInt32());
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public sealed class DeviceMappingStoreTests : IDisposable
         string path = Path.Combine(_directory, "device.json");
         DeviceMappingEntry[] entries =
         [
-            new("Fire", 0, DeviceMappingInputType.Button),
-            new("Roll Left", 1, DeviceMappingInputType.Axis, -1)
+            new("Fire", 0, 1, DeviceMappingInputType.Button),
+            new("Roll Left", 1, -1, DeviceMappingInputType.Axis)
         ];
 
         store.Save(path, entries);
@@ -107,8 +107,8 @@ public sealed class DeviceMappingStoreTests : IDisposable
         DeviceMappingStore store = Create();
         string path = Path.Combine(_directory, "device.json");
 
-        store.Save(path, [new DeviceMappingEntry("Fire", 0, DeviceMappingInputType.Button)]);
-        store.Save(path, [new DeviceMappingEntry("Trigger", 1, DeviceMappingInputType.Button)]);
+        store.Save(path, [new DeviceMappingEntry("Fire", 0, 1, DeviceMappingInputType.Button)]);
+        store.Save(path, [new DeviceMappingEntry("Trigger", 1, 1, DeviceMappingInputType.Button)]);
 
         DeviceMappingEntry entry = Assert.Single(store.Load(path));
         Assert.Equal("Trigger", entry.Label);
@@ -122,7 +122,7 @@ public sealed class DeviceMappingStoreTests : IDisposable
 
         string? replaced = DeviceMappingStore.Upsert(
             entries,
-            new DeviceMappingEntry("Fire", 0, DeviceMappingInputType.Button));
+            new DeviceMappingEntry("Fire", 0, 1, DeviceMappingInputType.Button));
 
         Assert.Null(replaced);
         Assert.Single(entries);
@@ -133,12 +133,12 @@ public sealed class DeviceMappingStoreTests : IDisposable
     {
         List<DeviceMappingEntry> entries =
         [
-            new("Fire", 0, DeviceMappingInputType.Button)
+            new("Fire", 0, 1, DeviceMappingInputType.Button)
         ];
 
         string? replaced = DeviceMappingStore.Upsert(
             entries,
-            new DeviceMappingEntry("Trigger", 0, DeviceMappingInputType.Button));
+            new DeviceMappingEntry("Trigger", 0, 1, DeviceMappingInputType.Button));
 
         Assert.Equal("Fire", replaced);
         Assert.Equal("Trigger", Assert.Single(entries).Label);
@@ -149,12 +149,12 @@ public sealed class DeviceMappingStoreTests : IDisposable
     {
         List<DeviceMappingEntry> entries =
         [
-            new("Roll Left", 0, DeviceMappingInputType.Axis, -1)
+            new("Roll Left", 0, -1, DeviceMappingInputType.Axis)
         ];
 
         string? replaced = DeviceMappingStore.Upsert(
             entries,
-            new DeviceMappingEntry("Roll Right", 0, DeviceMappingInputType.Axis, 1));
+            new DeviceMappingEntry("Roll Right", 0, 1, DeviceMappingInputType.Axis));
 
         Assert.Null(replaced);
         Assert.Equal(2, entries.Count);

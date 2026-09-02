@@ -22,6 +22,7 @@ public sealed class ConsoleUiService(
     private readonly object _gate = new();
     private readonly Queue<ConsoleEvent> _events = [];
     private readonly DirectInputWatcherOptions _options = options.Value;
+    private Guid? _focusedDevice;
     private string _status = "Starting USB device watchers...";
     private string _loader = "Enumeration: waiting";
     private int _progressDots;
@@ -39,8 +40,22 @@ public sealed class ConsoleUiService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            try { 
             await Task.Delay(TimeSpan.FromMilliseconds(250), stoppingToken);
-            RedrawIfResized();
+                RedrawIfResized();
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignore cancellation exceptions
+            }
+            catch (Exception ex)
+            {
+                if (!_renderFailureLogged)
+                {
+                    _renderFailureLogged = true;
+                    logger.LogError(ex, "Cancelled map mode");
+                }
+            }
         }
     }
 
@@ -107,6 +122,55 @@ public sealed class ConsoleUiService(
         }
     }
 
+    public ConsoleColor GetDeviceColor(Guid deviceId)
+    {
+        ConsoleColor[] brightColors =
+        [
+            ConsoleColor.Cyan,
+            ConsoleColor.Green,
+            ConsoleColor.Yellow,
+            ConsoleColor.Magenta,
+            ConsoleColor.Red,
+            ConsoleColor.Blue,
+            ConsoleColor.White,
+            ConsoleColor.DarkYellow
+        ];
+
+        int colorIndex = Math.Abs(deviceId.GetHashCode()) % brightColors.Length;
+        return brightColors[colorIndex];
+    }
+
+    public void SetFocusedDevice(Guid? deviceId)
+    {
+        lock (_gate)
+        {
+            _focusedDevice = deviceId;
+            RenderEvents();
+            RenderFooter();
+        }
+    }
+
+    public void AddDeviceEvent(Guid deviceId, string message, ConsoleColor color = ConsoleColor.White)
+    {
+        if (_focusedDevice is not null && _focusedDevice != deviceId)
+        {
+            // Ignore events from non-focused devices when a focus is set.
+            return;
+        }
+
+        AddEvent(message, color);
+    }
+
+    public void AddDeviceHighlightedEvent(Guid deviceId, string highlightedText, string remainingText, ConsoleColor highlightColor)
+    {
+        if (_focusedDevice is not null && _focusedDevice != deviceId)
+        {
+            return;
+        }
+
+        AddHighlightedEvent(highlightedText, remainingText, highlightColor);
+    }
+
     public void AddHighlightedEvent(
         string highlightedText,
         string remainingText,
@@ -130,24 +194,6 @@ public sealed class ConsoleUiService(
             RenderEvents();
             RenderFooter();
         }
-    }
-
-    public ConsoleColor GetDeviceColor(Guid deviceId)
-    {
-        ConsoleColor[] brightColors =
-        [
-            ConsoleColor.Cyan,
-            ConsoleColor.Green,
-            ConsoleColor.Yellow,
-            ConsoleColor.Magenta,
-            ConsoleColor.Red,
-            ConsoleColor.Blue,
-            ConsoleColor.White,
-            ConsoleColor.DarkYellow
-        ];
-
-        int colorIndex = Math.Abs(deviceId.GetHashCode()) % brightColors.Length;
-        return brightColors[colorIndex];
     }
 
     public Task<string?> ReadLabelAsync(string prompt, CancellationToken cancellationToken)

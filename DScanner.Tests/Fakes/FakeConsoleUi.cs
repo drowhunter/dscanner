@@ -44,6 +44,14 @@ internal sealed class FakeConsoleUi : IConsoleUi
 
     public ConsoleColor GetDeviceColor(Guid deviceId) => ConsoleColor.White;
 
+    public void SetFocusedDevice(Guid? deviceId) { }
+
+    public void AddDeviceEvent(Guid deviceId, string message, ConsoleColor color = ConsoleColor.White) =>
+        AddEvent(message, color);
+
+    public void AddDeviceHighlightedEvent(Guid deviceId, string highlightedText, string remainingText, ConsoleColor highlightColor) =>
+        AddHighlightedEvent(highlightedText, remainingText, highlightColor);
+
     public void SetStatus(string status)
     {
     }

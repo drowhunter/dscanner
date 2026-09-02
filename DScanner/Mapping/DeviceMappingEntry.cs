@@ -6,16 +6,12 @@ namespace DScanner.Mapping;
 /// One labelled control in a device mapping file.
 /// </summary>
 /// <param name="Label">The user-supplied name for the control.</param>
-/// <param name="ButtonNumber">The button, axis, or POV number the label is bound to.</param>
-/// <param name="Type">The kind of control <paramref name="ButtonNumber"/> refers to.</param>
-/// <param name="Direction">
-/// For <see cref="DeviceMappingInputType.Axis"/> entries, the sign of the movement that
-/// triggered the binding, so that opposite deflections of one axis stay distinct.
-/// Omitted for buttons and POVs.
-/// </param>
+/// <param name="Index">The index of the control on the device (button index, axis index, or POV index).</param>
+/// <param name="Value">The integer value associated with the control. For buttons this is 1 (press), for
+/// axes this is the direction (-1, 0, 1), and for POVs this is degrees or -1 for centre.</param>
+/// <param name="Type">The kind of control the entry refers to.</param>
 public sealed record DeviceMappingEntry(
     string Label,
-    int ButtonNumber,
-    DeviceMappingInputType Type,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    int? Direction = null);
+    int Index,
+    int Value,
+    DeviceMappingInputType Type);

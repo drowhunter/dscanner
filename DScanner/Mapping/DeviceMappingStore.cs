@@ -80,8 +80,8 @@ public sealed class DeviceMappingStore(
         {
             DeviceMappingEntry existing = entries[index];
             if (existing.Type != entry.Type
-                || existing.ButtonNumber != entry.ButtonNumber
-                || existing.Direction != entry.Direction)
+                || existing.Index != entry.Index
+                || existing.Value != entry.Value)
             {
                 continue;
             }

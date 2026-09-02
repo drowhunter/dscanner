@@ -70,7 +70,14 @@ static void ConfigureLogging(HostApplicationBuilder builder)
 
     string logFilePath = Path.Combine(logDirectory, "dscanner.log");
 
-    File.Delete(logFilePath);
+    // Truncate (create) a clean log file for this run, but open it using
+    // FileShare.ReadWrite while creating so other readers won't be blocked
+    // during the brief truncation operation. Serilog will later open the
+    // sink with shared: true so tailers can read while the process runs.
+    using (var fs = new FileStream(logFilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+    {
+        // create/truncate then close
+    }
 
     builder.Logging.ClearProviders();
     builder.Services.AddSerilog((_, configuration) => configuration
@@ -78,6 +85,6 @@ static void ConfigureLogging(HostApplicationBuilder builder)
         .Enrich.FromLogContext()
         .WriteTo.File(
             logFilePath,
-            shared: false,
+            shared: true,
             outputTemplate: "[{Timestamp: HH:mm:ss.fff}] [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}"));
 }

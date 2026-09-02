@@ -31,9 +31,9 @@ public sealed class DeviceMappingServiceTests
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
         Assert.Equal("Fire", entry.Label);
-        Assert.Equal(3, entry.ButtonNumber);
+        Assert.Equal(3, entry.Index);
+        Assert.Equal(1, entry.Value);
         Assert.Equal(DeviceMappingInputType.Button, entry.Type);
-        Assert.Null(entry.Direction);
         Assert.Equal("Device A", _store.ResolvedDeviceName);
     }
 
@@ -48,9 +48,9 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
-        Assert.Equal(1, entry.ButtonNumber);
+        Assert.Equal(1, entry.Index);
         Assert.Equal(DeviceMappingInputType.Axis, entry.Type);
-        Assert.Equal(-1, entry.Direction);
+        Assert.Equal(-1, entry.Value);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class DeviceMappingServiceTests
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
         Assert.Equal(DeviceMappingInputType.Pov, entry.Type);
-        Assert.Equal(0, entry.ButtonNumber);
+        Assert.Equal(0, entry.Index);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         Assert.Equal(2, _store.Saved.Count);
-        Assert.Equal([0, 1], _store.Saved.Select(entry => entry.ButtonNumber));
+        Assert.Equal([0, 1], _store.Saved.Select(entry => entry.Index));
         Assert.Contains(_ui.Events, message => message.Contains("Ignoring input from Device B"));
     }
 
@@ -110,8 +110,8 @@ public sealed class DeviceMappingServiceTests
     [Fact]
     public async Task ExistingEntries_ArePreservedAndTheSameControlIsReplaced()
     {
-        _store.Existing.Add(new DeviceMappingEntry("Old Fire", 3, DeviceMappingInputType.Button));
-        _store.Existing.Add(new DeviceMappingEntry("Keep Me", 9, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Old Fire", 3, 1, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Keep Me", 9, 1, DeviceMappingInputType.Button));
 
         _ui.Labels.Enqueue("Fire");
         _ui.Labels.Enqueue(string.Empty);
