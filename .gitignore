@@ -1,0 +1,40 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+[Dd]ebug/
+[Rr]elease/
+[Pp]ublish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# JetBrains IDEs
+.idea/
+*.sln.iml
+
+# Test and coverage results
+[Tt]est[Rr]esult*/
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!**/packages/build/
+
+# Local runtime artifacts
+*.log
+devices.json
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini

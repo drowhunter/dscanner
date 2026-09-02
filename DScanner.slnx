@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj" />
+  <Project Path="DirectInputWatcher.Tests/DirectInputWatcher.Tests.csproj" />
+  <Project Path="DirectInputWatcher/DirectInputWatcher.csproj" />
+  <Project Path="DScanner.Tests/DScanner.Tests.csproj" />
+  <Project Path="DScanner/DScanner.csproj" />
+</Solution>

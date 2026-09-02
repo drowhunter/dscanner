@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "DScanner": {
+      "commandName": "Project"
+    },
+    "MapMode": {
+      "commandName": "Project",
+      "commandLineArgs": "--map --map-output profiles"
+    }
+  }
+}
