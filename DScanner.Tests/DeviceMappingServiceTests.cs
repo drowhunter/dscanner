@@ -173,7 +173,7 @@ public sealed class DeviceMappingServiceTests
 
         Assert.Equal(0, _store.SaveCount);
         Assert.True(_ui.PromptCleared);
-        Assert.Contains(_ui.Events, message => message.Contains("nothing was written"));
+        Assert.Contains(_ui.Events, message => message.Contains("Saved 0 mapping(s)"));
     }
 
     private async Task RunAsync()
@@ -196,19 +196,28 @@ public sealed class DeviceMappingServiceTests
         await service.StopAsync(CancellationToken.None);
     }
 
-    private void ConnectDeviceA() =>
+    private void ConnectDeviceA()
+    {
+        DirectInputDeviceDescriptor descriptor = new(
+            DeviceA,
+            Guid.NewGuid(),
+            "Device A",
+            DeviceType.Joystick,
+            VendorId: 0x044F,
+            ProductId: 0xB10A,
+            InterfacePath: null);
+
+        _watcher.LifecycleSubject.OnNext(
+            new CurrentDevicesSnapshot(
+                DateTimeOffset.UtcNow,
+                [descriptor]));
+
         _watcher.LifecycleSubject.OnNext(
             new DeviceConnected(
                 DateTimeOffset.UtcNow,
-                new DirectInputDeviceDescriptor(
-                    DeviceA,
-                    Guid.NewGuid(),
-                    "Device A",
-                    DeviceType.Joystick,
-                    VendorId: 0x044F,
-                    ProductId: 0xB10A,
-                    InterfacePath: null),
+                descriptor,
                 FromCache: false));
+    }
 
     private static ButtonPressedEvent Button(Guid deviceId, int number) =>
         new(deviceId, DeviceName(deviceId), DateTimeOffset.UtcNow, number);
