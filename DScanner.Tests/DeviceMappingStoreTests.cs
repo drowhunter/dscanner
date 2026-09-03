@@ -145,6 +145,26 @@ public sealed class DeviceMappingStoreTests : IDisposable
     }
 
     [Fact]
+    public void Upsert_DoesNotUseLabelForMatching()
+    {
+        List<DeviceMappingEntry> entries =
+        [
+            new("Primary Fire", 2, 1, DeviceMappingInputType.Button)
+        ];
+
+        string? replaced = DeviceMappingStore.Upsert(
+            entries,
+            new DeviceMappingEntry("Alternate Fire", 2, 1, DeviceMappingInputType.Button));
+
+        Assert.Equal("Primary Fire", replaced);
+        DeviceMappingEntry updated = Assert.Single(entries);
+        Assert.Equal("Alternate Fire", updated.Label);
+        Assert.Equal(2, updated.Index);
+        Assert.Equal(1, updated.Value);
+        Assert.Equal(DeviceMappingInputType.Button, updated.Type);
+    }
+
+    [Fact]
     public void Upsert_TreatsOppositeAxisDirectionsAsSeparateControls()
     {
         List<DeviceMappingEntry> entries =

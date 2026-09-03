@@ -86,7 +86,7 @@ public sealed class DeviceMappingStore(
                 continue;
             }
 
-            entries[index] = entry;
+            entries[index] = existing with { Label = entry.Label };
             return existing.Label;
         }
 
