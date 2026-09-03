@@ -30,7 +30,8 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
-        Assert.Equal("Fire", entry.Label);
+        Assert.Equal("Fire", entry.Description);
+        Assert.Equal(string.Empty, entry.Name);
         Assert.Equal(3, entry.Index);
         Assert.Equal(1, entry.Value);
         Assert.Equal(DeviceMappingInputType.Button, entry.Type);
@@ -48,9 +49,51 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal("Roll Left", entry.Description);
+        Assert.Equal("X", entry.Name);
         Assert.Equal(1, entry.Index);
         Assert.Equal(DeviceMappingInputType.Axis, entry.Type);
         Assert.Equal(-1, entry.Value);
+    }
+
+    [Fact]
+    public async Task SimultaneousAxisAndButton_CanChooseButton()
+    {
+        _ui.Labels.Enqueue("Throttle");
+        _ui.Labels.Enqueue("b");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() =>
+        {
+            _watcher.InputSubject.OnNext(Axis(DeviceA, 2, 0.9));
+            _watcher.InputSubject.OnNext(Button(DeviceA, 6));
+        });
+
+        await RunAsync();
+
+        DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal(DeviceMappingInputType.Button, entry.Type);
+        Assert.Equal(6, entry.Index);
+    }
+
+    [Fact]
+    public async Task SimultaneousAxisAndButton_CanChooseAxis()
+    {
+        _ui.Labels.Enqueue("Throttle");
+        _ui.Labels.Enqueue("axis");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() =>
+        {
+            _watcher.InputSubject.OnNext(Button(DeviceA, 6));
+            _watcher.InputSubject.OnNext(Axis(DeviceA, 2, 0.9));
+        });
+
+        await RunAsync();
+
+        DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal(DeviceMappingInputType.Axis, entry.Type);
+        Assert.Equal(2, entry.Index);
     }
 
     [Fact]
@@ -68,6 +111,8 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal("Hat Up", entry.Description);
+        Assert.Equal(string.Empty, entry.Name);
         Assert.Equal(DeviceMappingInputType.Pov, entry.Type);
         Assert.Equal(0, entry.Index);
     }
@@ -110,8 +155,8 @@ public sealed class DeviceMappingServiceTests
     [Fact]
     public async Task ExistingEntries_ArePreservedAndTheSameControlIsReplaced()
     {
-        _store.Existing.Add(new DeviceMappingEntry("Old Fire", 3, 1, DeviceMappingInputType.Button));
-        _store.Existing.Add(new DeviceMappingEntry("Keep Me", 9, 1, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Old Fire", "Button 3", 3, 1, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Keep Me", string.Empty, 9, 1, DeviceMappingInputType.Button));
 
         _ui.Labels.Enqueue("Fire");
         _ui.Labels.Enqueue(string.Empty);
@@ -120,7 +165,8 @@ public sealed class DeviceMappingServiceTests
 
         await RunAsync();
 
-        Assert.Equal(["Fire", "Keep Me"], _store.Saved.Select(entry => entry.Label));
+        Assert.Equal(["Fire", "Keep Me"], _store.Saved.Select(entry => entry.Description));
+        Assert.Equal([string.Empty, string.Empty], _store.Saved.Select(entry => entry.Name));
     }
 
     [Fact]
@@ -133,7 +179,7 @@ public sealed class DeviceMappingServiceTests
 
         Assert.Equal(0, _store.SaveCount);
         Assert.True(_ui.PromptCleared);
-        Assert.Contains(_ui.Events, message => message.Contains("nothing was written"));
+        Assert.Contains(_ui.Events, message => message.Contains("Saved 0 mapping(s)"));
     }
 
     private async Task RunAsync()
@@ -156,19 +202,28 @@ public sealed class DeviceMappingServiceTests
         await service.StopAsync(CancellationToken.None);
     }
 
-    private void ConnectDeviceA() =>
+    private void ConnectDeviceA()
+    {
+        DirectInputDeviceDescriptor descriptor = new(
+            DeviceA,
+            Guid.NewGuid(),
+            "Device A",
+            DeviceType.Joystick,
+            VendorId: 0x044F,
+            ProductId: 0xB10A,
+            InterfacePath: null);
+
+        _watcher.LifecycleSubject.OnNext(
+            new CurrentDevicesSnapshot(
+                DateTimeOffset.UtcNow,
+                [descriptor]));
+
         _watcher.LifecycleSubject.OnNext(
             new DeviceConnected(
                 DateTimeOffset.UtcNow,
-                new DirectInputDeviceDescriptor(
-                    DeviceA,
-                    Guid.NewGuid(),
-                    "Device A",
-                    DeviceType.Joystick,
-                    VendorId: 0x044F,
-                    ProductId: 0xB10A,
-                    InterfacePath: null),
+                descriptor,
                 FromCache: false));
+    }
 
     private static ButtonPressedEvent Button(Guid deviceId, int number) =>
         new(deviceId, DeviceName(deviceId), DateTimeOffset.UtcNow, number);

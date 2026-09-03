@@ -13,9 +13,9 @@ internal sealed class DirectInputWatcherService : IDirectInputWatcher
 {
     private readonly object _gate = new();
     private readonly SemaphoreSlim _lifetimeGate = new(1, 1);
-    private readonly Dictionary<Guid, ActiveDevice> _activeDevices = [];
+    private readonly Dictionary<Guid, ActiveDevice> _activeDevices = new();
     private readonly LifecycleEventHub _lifecycle = new();
-    private readonly ISubject<ControllerInputEvent> _inputSubject = Subject.Synchronize(new Subject<ControllerInputEvent>());
+    private readonly ISubject<ControllerInputEvent> _inputSubject;
     private readonly DirectInputDeviceEnumerator _enumerator;
     private readonly DirectInputDeviceCache _cache;
     private readonly DirectInputDeviceSessionFactory _sessionFactory;
@@ -46,6 +46,7 @@ internal sealed class DirectInputWatcherService : IDirectInputWatcher
         _usbChanges = usbChanges;
         _options = options.Value;
         _logger = loggerFactory.CreateLogger<DirectInputWatcherService>();
+        _inputSubject = Subject.Synchronize(new Subject<ControllerInputEvent>());
 
         Lifecycle = _lifecycle.Observable;
         Inputs = _inputSubject.AsObservable();

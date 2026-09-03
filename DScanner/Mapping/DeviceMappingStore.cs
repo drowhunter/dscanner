@@ -68,13 +68,17 @@ public sealed class DeviceMappingStore(
     }
 
     /// <summary>
-    /// Adds <paramref name="entry"/>, replacing any entry already bound to the same control.
+    /// Adds <paramref name="entry"/>, replacing any entry already bound to the same control,
+    /// and ensuring no two entries share the same description.
     /// </summary>
-    /// <returns>The label that was replaced, or <see langword="null"/> when the entry is new.</returns>
+    /// <returns>The description that was replaced on the same control, or <see langword="null"/> when the entry is new.</returns>
     public static string? Upsert(IList<DeviceMappingEntry> entries, DeviceMappingEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(entry);
+
+        int existingControlIndex = -1;
+        string? replacedDescription = null;
 
         for (int index = 0; index < entries.Count; index++)
         {
@@ -86,8 +90,38 @@ public sealed class DeviceMappingStore(
                 continue;
             }
 
-            entries[index] = entry;
-            return existing.Label;
+            existingControlIndex = index;
+            replacedDescription = existing.Description;
+            break;
+        }
+
+        for (int index = entries.Count - 1; index >= 0; index--)
+        {
+            if (index == existingControlIndex)
+            {
+                continue;
+            }
+
+            if (!string.Equals(entries[index].Description, entry.Description, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            entries.RemoveAt(index);
+            if (index < existingControlIndex)
+            {
+                existingControlIndex--;
+            }
+        }
+
+        if (existingControlIndex >= 0)
+        {
+            entries[existingControlIndex] = entries[existingControlIndex] with
+            {
+                Description = entry.Description,
+                Name = entry.Name
+            };
+            return replacedDescription;
         }
 
         entries.Add(entry);
