@@ -30,7 +30,8 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
-        Assert.Equal("Fire", entry.Label);
+        Assert.Equal("Fire", entry.Description);
+        Assert.Equal(string.Empty, entry.Name);
         Assert.Equal(3, entry.Index);
         Assert.Equal(1, entry.Value);
         Assert.Equal(DeviceMappingInputType.Button, entry.Type);
@@ -48,6 +49,8 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal("Roll Left", entry.Description);
+        Assert.Equal("X", entry.Name);
         Assert.Equal(1, entry.Index);
         Assert.Equal(DeviceMappingInputType.Axis, entry.Type);
         Assert.Equal(-1, entry.Value);
@@ -108,6 +111,8 @@ public sealed class DeviceMappingServiceTests
         await RunAsync();
 
         DeviceMappingEntry entry = Assert.Single(_store.Saved);
+        Assert.Equal("Hat Up", entry.Description);
+        Assert.Equal(string.Empty, entry.Name);
         Assert.Equal(DeviceMappingInputType.Pov, entry.Type);
         Assert.Equal(0, entry.Index);
     }
@@ -150,8 +155,8 @@ public sealed class DeviceMappingServiceTests
     [Fact]
     public async Task ExistingEntries_ArePreservedAndTheSameControlIsReplaced()
     {
-        _store.Existing.Add(new DeviceMappingEntry("Old Fire", 3, 1, DeviceMappingInputType.Button));
-        _store.Existing.Add(new DeviceMappingEntry("Keep Me", 9, 1, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Old Fire", "Button 3", 3, 1, DeviceMappingInputType.Button));
+        _store.Existing.Add(new DeviceMappingEntry("Keep Me", string.Empty, 9, 1, DeviceMappingInputType.Button));
 
         _ui.Labels.Enqueue("Fire");
         _ui.Labels.Enqueue(string.Empty);
@@ -160,7 +165,8 @@ public sealed class DeviceMappingServiceTests
 
         await RunAsync();
 
-        Assert.Equal(["Fire", "Keep Me"], _store.Saved.Select(entry => entry.Label));
+        Assert.Equal(["Fire", "Keep Me"], _store.Saved.Select(entry => entry.Description));
+        Assert.Equal([string.Empty, string.Empty], _store.Saved.Select(entry => entry.Name));
     }
 
     [Fact]

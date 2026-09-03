@@ -450,20 +450,21 @@ public sealed class DeviceMappingService(
         {
             ButtonPressedEvent button => new DeviceMappingEntry(
                 label,
+                string.Empty,
                 button.ButtonNumber,
                 1,
                 DeviceMappingInputType.Button),
 
             AxisMovedEvent axis => new DeviceMappingEntry(
-                string.IsNullOrWhiteSpace(axis.AxisName)
-                    ? label
-                    : $"{label} ({axis.AxisName.Trim()})",
+                label,
+                axis.AxisName?.Trim() ?? string.Empty,
                 axis.AxisNumber,
                 Math.Sign(axis.Value),
                 DeviceMappingInputType.Axis),
 
             PovChangedEvent pov => new DeviceMappingEntry(
                 label,
+                string.Empty,
                 pov.PovNumber,
                 pov.Degrees == -1 ? -1 : (int)pov.Degrees,
                 DeviceMappingInputType.Pov),
