@@ -153,6 +153,60 @@ public sealed class DeviceMappingServiceTests
     }
 
     [Fact]
+    public async Task ConflictingDescription_UpdateChoice_MovesDescriptionToNewControl()
+    {
+        _store.Existing.Add(new DeviceMappingEntry("Fire", string.Empty, 0, 1, DeviceMappingInputType.Button));
+
+        _ui.Labels.Enqueue("Fire");
+        _ui.Labels.Enqueue("u");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() => _watcher.InputSubject.OnNext(Button(DeviceA, 5)));
+
+        await RunAsync();
+
+        Assert.Single(_store.Saved);
+        DeviceMappingEntry entry = _store.Saved[0];
+        Assert.Equal("Fire", entry.Description);
+        Assert.Equal(5, entry.Index);
+    }
+
+    [Fact]
+    public async Task ConflictingDescription_NewLabelChoice_MapsBothControls()
+    {
+        _store.Existing.Add(new DeviceMappingEntry("Fire", string.Empty, 0, 1, DeviceMappingInputType.Button));
+
+        _ui.Labels.Enqueue("Fire");
+        _ui.Labels.Enqueue("Fire2");
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() => _watcher.InputSubject.OnNext(Button(DeviceA, 5)));
+
+        await RunAsync();
+
+        Assert.Equal(2, _store.Saved.Count);
+        Assert.Equal(["Fire", "Fire2"], _store.Saved.Select(entry => entry.Description));
+        Assert.Equal([0, 5], _store.Saved.Select(entry => entry.Index));
+    }
+
+    [Fact]
+    public async Task ConflictingDescription_Escape_SkipsWithoutWritingAnEntry()
+    {
+        _store.Existing.Add(new DeviceMappingEntry("Fire", string.Empty, 0, 1, DeviceMappingInputType.Button));
+
+        _ui.Labels.Enqueue("Fire");
+        _ui.Labels.Enqueue(null);
+        _ui.Labels.Enqueue(string.Empty);
+        _ui.PromptActions.Enqueue(ConnectDeviceA);
+        _ui.PromptActions.Enqueue(() => _watcher.InputSubject.OnNext(Button(DeviceA, 5)));
+
+        await RunAsync();
+
+        Assert.Equal(0, _store.SaveCount);
+        Assert.Contains(_ui.Events, message => message.Contains("Skipped 'Fire'"));
+    }
+
+    [Fact]
     public async Task ExistingEntries_ArePreservedAndTheSameControlIsReplaced()
     {
         _store.Existing.Add(new DeviceMappingEntry("Old Fire", "Button 3", 3, 1, DeviceMappingInputType.Button));

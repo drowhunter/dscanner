@@ -77,7 +77,12 @@ public sealed class DeviceMappingService(
                 continue;
             }
 
-            RecordCapture(label, captured);
+            bool recorded = await RecordCaptureAsync(label, captured, stoppingToken);
+            if (!recorded)
+            {
+                consoleUi.AddEvent($"Skipped '{label}'.", ConsoleColor.Yellow);
+                continue;
+            }
 
             if (_settings.SettleDelay > TimeSpan.Zero)
             {
@@ -403,7 +408,7 @@ public sealed class DeviceMappingService(
             ConsoleColor.Yellow);
     }
 
-    private void RecordCapture(string label, ControllerInputEvent captured)
+    private async Task<bool> RecordCaptureAsync(string label, ControllerInputEvent captured, CancellationToken cancellationToken)
     {
         if (_deviceId is null)
         {
@@ -419,6 +424,39 @@ public sealed class DeviceMappingService(
                 "Mapping device {DeviceName} to {MappingFilePath}.",
                 captured.DeviceName,
                 _filePath);
+        }
+
+        while (true)
+        {
+            DeviceMappingEntry candidate = CreateEntry(label, captured);
+            DeviceMappingEntry? conflict = DeviceMappingStore.FindConflictingEntry(_entries, candidate);
+            if (conflict is null)
+            {
+                break;
+            }
+
+            string conflictPrompt =
+                $"'{conflict.Description}' is already mapped to a different control. "
+                + "(U)pdate to use this control instead, or type a new label (Esc to skip): ";
+            string? choice = await consoleUi.ReadLabelAsync(conflictPrompt, cancellationToken);
+            if (choice is null)
+            {
+                return false;
+            }
+
+            if (choice.Equals("u", StringComparison.OrdinalIgnoreCase)
+                || choice.Equals("update", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(choice))
+            {
+                consoleUi.AddEvent("Invalid selection; enter U to update or provide a new label.", ConsoleColor.Yellow);
+                continue;
+            }
+
+            label = choice;
         }
 
         DeviceMappingEntry entry = CreateEntry(label, captured);
@@ -443,7 +481,10 @@ public sealed class DeviceMappingService(
             label,
             description,
             replaced ?? "nothing");
+
+        return true;
     }
+
 
     private static DeviceMappingEntry CreateEntry(string label, ControllerInputEvent captured) =>
         captured switch

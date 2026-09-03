@@ -68,6 +68,37 @@ public sealed class DeviceMappingStore(
     }
 
     /// <summary>
+    /// Finds an entry bound to a different control than <paramref name="entry"/> that already
+    /// uses the same description (case-insensitively).
+    /// </summary>
+    /// <returns>The conflicting entry, or <see langword="null"/> when the description is unused or only
+    /// bound to the same control as <paramref name="entry"/>.</returns>
+    public static DeviceMappingEntry? FindConflictingEntry(IReadOnlyList<DeviceMappingEntry> entries, DeviceMappingEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(entry);
+
+        foreach (DeviceMappingEntry existing in entries)
+        {
+            bool sameControl = existing.Type == entry.Type
+                && existing.Index == entry.Index
+                && existing.Value == entry.Value;
+
+            if (sameControl)
+            {
+                continue;
+            }
+
+            if (string.Equals(existing.Description, entry.Description, StringComparison.OrdinalIgnoreCase))
+            {
+                return existing;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Adds <paramref name="entry"/>, replacing any entry already bound to the same control,
     /// and ensuring no two entries share the same description.
     /// </summary>

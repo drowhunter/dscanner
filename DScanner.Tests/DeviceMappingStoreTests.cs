@@ -211,6 +211,54 @@ public sealed class DeviceMappingStoreTests : IDisposable
     }
 
     [Fact]
+    public void FindConflictingEntry_ReturnsTheOtherControlUsingTheSameDescription()
+    {
+        List<DeviceMappingEntry> entries =
+        [
+            new("Fire", string.Empty, 0, 1, DeviceMappingInputType.Button),
+            new("Brake", string.Empty, 1, 1, DeviceMappingInputType.Button)
+        ];
+
+        DeviceMappingEntry? conflict = DeviceMappingStore.FindConflictingEntry(
+            entries,
+            new DeviceMappingEntry("fIrE", "Button 2", 2, 1, DeviceMappingInputType.Button));
+
+        Assert.NotNull(conflict);
+        Assert.Equal("Fire", conflict.Description);
+        Assert.Equal(0, conflict.Index);
+    }
+
+    [Fact]
+    public void FindConflictingEntry_ReturnsNullWhenUpdatingTheSameControl()
+    {
+        List<DeviceMappingEntry> entries =
+        [
+            new("Trigger", string.Empty, 0, 1, DeviceMappingInputType.Button)
+        ];
+
+        DeviceMappingEntry? conflict = DeviceMappingStore.FindConflictingEntry(
+            entries,
+            new DeviceMappingEntry("Trigger", "Button A", 0, 1, DeviceMappingInputType.Button));
+
+        Assert.Null(conflict);
+    }
+
+    [Fact]
+    public void FindConflictingEntry_ReturnsNullWhenNoDescriptionMatches()
+    {
+        List<DeviceMappingEntry> entries =
+        [
+            new("Fire", string.Empty, 0, 1, DeviceMappingInputType.Button)
+        ];
+
+        DeviceMappingEntry? conflict = DeviceMappingStore.FindConflictingEntry(
+            entries,
+            new DeviceMappingEntry("Brake", string.Empty, 1, 1, DeviceMappingInputType.Button));
+
+        Assert.Null(conflict);
+    }
+
+    [Fact]
     public void Upsert_AllowsUpdatingSameInput_ButPreventsDuplicatesAcrossOtherInputs()
     {
         // Prevent duplicates across different inputs
