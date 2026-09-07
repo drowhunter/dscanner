@@ -82,10 +82,7 @@ internal sealed class DirectInputWatcherService : IDirectInputWatcher
                 {
                     if (notification.Error is not null)
                     {
-                        PublishError(
-                            WatcherErrorKind.UsbWatcher,
-                            "The USB device watcher stopped and will restart.",
-                            notification.Error);
+                        PublishError(WatcherErrorKind.UsbWatcher,"The USB device watcher stopped and will restart.",notification.Error);
                         RequestScan(ScanReason.Recovery);
                         return;
                     }
@@ -101,9 +98,7 @@ internal sealed class DirectInputWatcherService : IDirectInputWatcher
                             notification.ProductId));
                     RequestScan(ScanReason.UsbDeviceChanged);
                 });
-            _runTask = RunAsync(
-                _scanRequests.Reader,
-                _runCancellation.Token);
+            _runTask = RunAsync(_scanRequests.Reader, _runCancellation.Token);
             RequestScan(ScanReason.Startup);
         }
         finally
@@ -232,8 +227,7 @@ internal sealed class DirectInputWatcherService : IDirectInputWatcher
                         elapsed.Elapsed));
             }
 
-            IReadOnlyList<DirectInputDeviceDescriptor> discovered =
-                await enumerationTask.WaitAsync(cancellationToken);
+            IReadOnlyList<DirectInputDeviceDescriptor> discovered = await enumerationTask.WaitAsync(cancellationToken);
             SaveCache(discovered);
             Reconcile(discovered.Where(_filter.IsAllowed).ToArray());
             Publish(

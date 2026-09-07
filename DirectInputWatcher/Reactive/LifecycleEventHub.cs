@@ -8,7 +8,9 @@ internal sealed class LifecycleEventHub : IDisposable
     private readonly object _gate = new();
     private readonly Dictionary<Guid, DirectInputDeviceDescriptor> _connected = [];
     private readonly ISubject<DirectInputLifecycleEvent> _events =
-        Subject.Synchronize(new Subject<DirectInputLifecycleEvent>());
+        Subject.Synchronize(new BehaviorSubject<DirectInputLifecycleEvent>(new CurrentDevicesSnapshot(
+            DateTimeOffset.UtcNow, 
+            Array.Empty<DirectInputDeviceDescriptor>())));
 
     public LifecycleEventHub()
     {

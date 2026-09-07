@@ -2,39 +2,22 @@ namespace DirectInputWatcher;
 
 public abstract record DirectInputLifecycleEvent(DateTimeOffset Timestamp);
 
-public sealed record CurrentDevicesSnapshot(
-    DateTimeOffset Timestamp,
-    IReadOnlyList<DirectInputDeviceDescriptor> Devices)
+public sealed record CurrentDevicesSnapshot(DateTimeOffset Timestamp, IReadOnlyList<DirectInputDeviceDescriptor> Devices)
     : DirectInputLifecycleEvent(Timestamp);
 
-public sealed record DeviceConnected(
-    DateTimeOffset Timestamp,
-    DirectInputDeviceDescriptor Device,
-    bool FromCache)
+public sealed record DeviceConnected(DateTimeOffset Timestamp, DirectInputDeviceDescriptor Device, bool FromCache)
     : DirectInputLifecycleEvent(Timestamp);
 
-public sealed record DeviceDisconnected(
-    DateTimeOffset Timestamp,
-    DirectInputDeviceDescriptor Device,
-    string Reason)
+public sealed record DeviceDisconnected(DateTimeOffset Timestamp, DirectInputDeviceDescriptor Device, string Reason)
     : DirectInputLifecycleEvent(Timestamp);
 
-public sealed record ScanStarted(
-    DateTimeOffset Timestamp,
-    ScanReason Reason)
+public sealed record ScanStarted(DateTimeOffset Timestamp, ScanReason Reason)
     : DirectInputLifecycleEvent(Timestamp);
 
-public sealed record ScanProgress(
-    DateTimeOffset Timestamp,
-    ScanReason Reason,
-    TimeSpan Elapsed)
+public sealed record ScanProgress(DateTimeOffset Timestamp, ScanReason Reason, TimeSpan Elapsed)
     : DirectInputLifecycleEvent(Timestamp);
 
-public sealed record ScanCompleted(
-    DateTimeOffset Timestamp,
-    ScanReason Reason,
-    TimeSpan Elapsed,
-    int DiscoveredDeviceCount)
+public sealed record ScanCompleted(DateTimeOffset Timestamp, ScanReason Reason, TimeSpan Elapsed, int DiscoveredDeviceCount)
     : DirectInputLifecycleEvent(Timestamp);
 
 public sealed record UsbDeviceChanged(

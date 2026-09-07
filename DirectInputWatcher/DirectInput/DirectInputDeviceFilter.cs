@@ -14,6 +14,21 @@ internal sealed class DirectInputDeviceFilter(
             .Select(value => (value.VendorId, value.ProductId))
             .ToHashSet();
 
+    /// <summary>
+    /// Determines whether the specified DirectInput device is allowed based on the
+    /// configured whitelist and blacklist of vendor/product ID pairs.
+    /// </summary>
+    /// <remarks>
+    /// A device is disallowed if its vendor/product ID pair is present in the blacklist,
+    /// regardless of whitelist configuration. If the descriptor does not expose both a
+    /// vendor ID and a product ID, the device is allowed only when no whitelist has been
+    /// configured. When a whitelist is configured, only devices whose vendor/product ID
+    /// pair is present in the whitelist are allowed.
+    /// </remarks>
+    /// <param name="descriptor">The descriptor of the device to evaluate.</param>
+    /// <returns>
+    /// <see langword="true"/> if the device is allowed; otherwise, <see langword="false"/>.
+    /// </returns>
     public bool IsAllowed(DirectInputDeviceDescriptor descriptor)
     {
         if (descriptor.VendorId is not int vendorId
