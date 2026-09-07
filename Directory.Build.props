@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <Company></Company>
+    <Authors>Trevor Jones</Authors>
+    <PackageOutputPath>D:\Nuget</PackageOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Single source of truth: both packages ship this version, and package-mode
+         references resolve to it. Bump this one line to ship. -->
+    <VersionPrefix>1.0.1</VersionPrefix>
+
+    <PackageProjectUrl>https://github.com/drowhunter/dscanner</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/drowhunter/dscanner</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Development default: in-repo dependencies are consumed as project references, so
+         builds and tests always exercise the working tree. Pass -p:UseProjectReferences=false
+         to consume them as NuGet packages instead and prove the published packages compose. -->
+    <UseProjectReferences Condition="'$(UseProjectReferences)' == ''">true</UseProjectReferences>
+
+    <!-- Version used when an in-repo dependency is consumed as a package. -->
+    <DScannerPackageVersion Condition="'$(DScannerPackageVersion)' == ''">$(VersionPrefix)</DScannerPackageVersion>
+  </PropertyGroup>
+
+</Project>
