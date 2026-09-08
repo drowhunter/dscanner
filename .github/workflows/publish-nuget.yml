@@ -8,9 +8,9 @@ jobs:
   deploy:
     runs-on: windows-latest # Use windows-latest since the projects target net10.0-windows
     permissions:
-      packages: write # Required to publish packages to NuGet
+      id-token: write  # Required for OIDC authentication
       contents: read
-      
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,6 +19,15 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      # Step 1: Exchange the GitHub OIDC token for a short-lived NuGet API key
+      - name: NuGet Login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          # Your nuget.org profile username (NOT your email address)
+          # It is highly recommended to save this as a GitHub Secret
+          user: ${{ secrets.NUGET_USER }} 
 
       - name: Restore dependencies
         run: dotnet restore
@@ -29,14 +38,18 @@ jobs:
       - name: Pack DirectInputWatcher
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack DirectInputWatcher/DirectInputWatcher.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false
+          dotnet pack DirectInputWatcher/DirectInputWatcher.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false --source ./artifacts
 
       - name: Pack DirectInputWatcher.Configuration
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false
+          dotnet pack DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false --source ./artifacts
 
       - name: Push to NuGet
         run: |
-          dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates
-          dotnet nuget push ./artifacts/*.snupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates || true
+          Get-ChildItem -Path ./artifacts -File | ForEach-Object {
+            if ($_.Extension -eq '.nupkg' -or $_.Extension -eq '.snupkg') {
+              Write-Host "Pushing: $($_.FullName)"
+              dotnet nuget push $_.FullName --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+            }
+          }
