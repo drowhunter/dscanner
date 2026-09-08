@@ -50,6 +50,6 @@ jobs:
           Get-ChildItem -Path ./artifacts -File | ForEach-Object {
             if ($_.Extension -eq '.nupkg' -or $_.Extension -eq '.snupkg') {
               Write-Host "Pushing: $($_.FullName)"
-              dotnet nuget push $_.FullName --skip-duplicates --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
+              dotnet nuget push $_.FullName --skip-duplicate --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
             }
           }
