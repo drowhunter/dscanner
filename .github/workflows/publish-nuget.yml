@@ -29,12 +29,12 @@ jobs:
       - name: Pack DirectInputWatcher
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack DirectInputWatcher/DirectInputWatcher.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false
+          dotnet pack DirectInputWatcher/DirectInputWatcher.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false --source ./artifacts
 
       - name: Pack DirectInputWatcher.Configuration
         run: |
           $version = "${{ github.ref_name }}" -replace '^v', ''
-          dotnet pack DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false
+          dotnet pack DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj -c Release -o ./artifacts /p:Version=$version -p:UseProjectReferences=false --source ./artifacts
 
       - name: Push to NuGet
         run: |
