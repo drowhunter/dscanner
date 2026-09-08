@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/SolutionItems/">
+    <File Path="Directory.build.props" />
+  </Folder>
   <Project Path="DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj" />
   <Project Path="DirectInputWatcher.Tests/DirectInputWatcher.Tests.csproj" />
   <Project Path="DirectInputWatcher/DirectInputWatcher.csproj" />
