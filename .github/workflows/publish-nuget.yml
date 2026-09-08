@@ -10,6 +10,7 @@ jobs:
     permissions:
       packages: write # Required to publish packages to NuGet
       contents: read
+      id-token: write  # Required for OIDC authentication
       
     steps:
       - name: Checkout code
@@ -20,6 +21,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: NuGet login (OIDC)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+    
       - name: Restore dependencies
         run: dotnet restore
 
@@ -38,5 +45,5 @@ jobs:
 
       - name: Push to NuGet
         run: |
-          dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates --source https://api.nuget.org/v3/index.json
-          dotnet nuget push ./artifacts/*.snupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates --source https://api.nuget.org/v3/index.json || true
+          dotnet nuget push ./artifacts/*.nupkg --skip-duplicates --source https://api.nuget.org/v3/index.json
+          dotnet nuget push ./artifacts/*.snupkg --skip-duplicates --source https://api.nuget.org/v3/index.json || true
