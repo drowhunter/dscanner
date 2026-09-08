@@ -20,9 +20,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Get OIDC Token
-        id: get_token
-        uses: actions/id-token-action@v1
+      # Step 1: Exchange the GitHub OIDC token for a short-lived NuGet API key
+      - name: NuGet Login
+        uses: NuGet/login@v1
+        id: login
+        with:
+          # Your nuget.org profile username (NOT your email address)
+          # It is highly recommended to save this as a GitHub Secret
+          user: ${{ secrets.NUGET_USER }} 
 
       - name: Restore dependencies
         run: dotnet restore
@@ -45,6 +50,6 @@ jobs:
           Get-ChildItem -Path ./artifacts -File | ForEach-Object {
             if ($_.Extension -eq '.nupkg' -or $_.Extension -eq '.snupkg') {
               Write-Host "Pushing: $($_.FullName)"
-              dotnet nuget push $_.FullName --skip-duplicates --source https://api.nuget.org/v3/index.json --api-key ${{ steps.get_token.outputs.NUGET_API_KEY }}
+              dotnet nuget push $_.FullName --skip-duplicates --source https://api.nuget.org/v3/index.json --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
             }
           }
