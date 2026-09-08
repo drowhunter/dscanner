@@ -1,0 +1,38 @@
+name: Publish NuGet Packages
+
+on:
+  release:
+    types: [published] # Triggers automatically when you create a GitHub Release
+
+jobs:
+  deploy:
+    runs-on: windows-latest # Use windows-latest since the projects target net10.0-windows
+    permissions:
+      packages: write # Required to publish packages to NuGet
+      contents: read
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Pack DirectInputWatcher
+        run: dotnet pack DirectInputWatcher/DirectInputWatcher.csproj -c Release -o ./artifacts /p:Version=${{ github.ref_name }} -p:UseProjectReferences=false
+
+      - name: Pack DirectInputWatcher.Configuration
+        run: dotnet pack DirectInputWatcher.Configuration/DirectInputWatcher.Configuration.csproj -c Release -o ./artifacts /p:Version=${{ github.ref_name }} -p:UseProjectReferences=false
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates
+          dotnet nuget push ./artifacts/*.snupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates || true

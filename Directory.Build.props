@@ -9,7 +9,7 @@
   <PropertyGroup>
     <!-- Single source of truth: both packages ship this version, and package-mode
          references resolve to it. Bump this one line to ship. -->
-    <VersionPrefix>1.0.1</VersionPrefix>
+    <VersionPrefix>1.0.2</VersionPrefix>
 
     <PackageProjectUrl>https://github.com/drowhunter/dscanner</PackageProjectUrl>
     <RepositoryUrl>https://github.com/drowhunter/dscanner</RepositoryUrl>
