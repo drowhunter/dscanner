@@ -8,10 +8,9 @@ jobs:
   deploy:
     runs-on: windows-latest # Use windows-latest since the projects target net10.0-windows
     permissions:
-      packages: write # Required to publish packages to NuGet
-      contents: read
       id-token: write  # Required for OIDC authentication
-      
+      contents: read
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,12 +20,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: NuGet login (OIDC)
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-    
+      - name: Get OIDC Token
+        id: get_token
+        uses: actions/id-token-action@v1
+
       - name: Restore dependencies
         run: dotnet restore
 
@@ -45,5 +42,9 @@ jobs:
 
       - name: Push to NuGet
         run: |
-          dotnet nuget push ./artifacts/*.nupkg --skip-duplicates --source https://api.nuget.org/v3/index.json
-          dotnet nuget push ./artifacts/*.snupkg --skip-duplicates --source https://api.nuget.org/v3/index.json || true
+          Get-ChildItem -Path ./artifacts -File | ForEach-Object {
+            if ($_.Extension -eq '.nupkg' -or $_.Extension -eq '.snupkg') {
+              Write-Host "Pushing: $($_.FullName)"
+              dotnet nuget push $_.FullName --skip-duplicates --source https://api.nuget.org/v3/index.json --api-key ${{ steps.get_token.outputs.NUGET_API_KEY }}
+            }
+          }
