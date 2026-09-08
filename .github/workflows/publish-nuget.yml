@@ -38,5 +38,5 @@ jobs:
 
       - name: Push to NuGet
         run: |
-          dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates
-          dotnet nuget push ./artifacts/*.snupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates || true
+          dotnet nuget push ./artifacts/*.nupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates --source https://api.nuget.org/v3/index.json
+          dotnet nuget push ./artifacts/*.snupkg --api-key ${{ secrets.NUGET_AUTH_TOKEN }} --skip-duplicates --source https://api.nuget.org/v3/index.json || true
